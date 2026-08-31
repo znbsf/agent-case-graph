@@ -1,0 +1,34 @@
+[project]
+name = "agent-case-graph"
+version = "0.1.0"
+description = "Evidence-first case, run, provenance and knowledge graph toolkit for agent work"
+readme = "README.md"
+license = { file = "LICENSE" }
+requires-python = ">=3.11"
+dependencies = []
+keywords = ["ai-agents", "event-sourcing", "knowledge-graph", "provenance", "workflow"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3 :: Only",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.scripts]
+acg = "agent_case_graph.cli:main"
+
+[project.urls]
+Homepage = "https://github.com/znbsf/agent-case-graph"
+Repository = "https://github.com/znbsf/agent-case-graph"
+Issues = "https://github.com/znbsf/agent-case-graph/issues"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["agent_case_graph*"]
+
+[tool.setuptools.package-data]
+agent_case_graph = ["schemas/*.json"]

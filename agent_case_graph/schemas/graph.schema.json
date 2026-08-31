@@ -1,0 +1,29 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/znbsf/agent-case-graph/main/agent_case_graph/schemas/graph.schema.json",
+  "title": "Agent Case Graph Projection",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "graph_id",
+    "graph_type",
+    "root_id",
+    "generated_at",
+    "nodes",
+    "edges",
+    "state_history",
+    "stats"
+  ],
+  "properties": {
+    "schema_version": { "const": "0.1.0" },
+    "graph_id": { "type": "string" },
+    "graph_type": { "type": "string" },
+    "root_id": { "type": "string" },
+    "generated_at": { "type": "string", "format": "date-time" },
+    "nodes": { "type": "array", "items": { "type": "object" } },
+    "edges": { "type": "array", "items": { "type": "object" } },
+    "state_history": { "type": "array", "items": { "type": "object" } },
+    "stats": { "type": "object" }
+  },
+  "additionalProperties": true
+}

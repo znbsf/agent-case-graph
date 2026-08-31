@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://raw.githubusercontent.com/znbsf/agent-case-graph/main/agent_case_graph/schemas/event.schema.json",
+  "title": "Agent Case Graph Event",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "event_id",
+    "case_id",
+    "sequence",
+    "occurred_at",
+    "kind",
+    "actor",
+    "provenance"
+  ],
+  "properties": {
+    "schema_version": { "const": "0.1.0" },
+    "event_id": { "type": "string", "minLength": 1 },
+    "case_id": { "type": "string", "minLength": 1 },
+    "run_id": { "type": ["string", "null"] },
+    "sequence": { "type": "integer", "minimum": 1 },
+    "occurred_at": { "type": "string", "format": "date-time" },
+    "kind": {
+      "enum": [
+        "graph.declared",
+        "node.recorded",
+        "edge.recorded",
+        "state.changed"
+      ]
+    },
+    "actor": {
+      "type": "object",
+      "required": ["type", "id"],
+      "properties": {
+        "type": { "enum": ["human", "agent", "tool", "service"] },
+        "id": { "type": "string", "minLength": 1 }
+      },
+      "additionalProperties": false
+    },
+    "provenance": {
+      "type": "object",
+      "required": ["capture_mode", "source_refs"],
+      "properties": {
+        "capture_mode": { "enum": ["live", "reconstructed", "synthetic"] },
+        "source_refs": {
+          "type": "array",
+          "items": { "type": "string" }
+        }
+      },
+      "additionalProperties": true
+    },
+    "graph": { "type": "object" },
+    "node": { "type": "object" },
+    "edge": { "type": "object" },
+    "transition": { "type": "object" }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "kind": { "const": "graph.declared" } } },
+      "then": { "required": ["graph"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "node.recorded" } } },
+      "then": { "required": ["node"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "edge.recorded" } } },
+      "then": { "required": ["edge"] }
+    },
+    {
+      "if": { "properties": { "kind": { "const": "state.changed" } } },
+      "then": { "required": ["transition"] }
+    }
+  ],
+  "additionalProperties": false
+}
