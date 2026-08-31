@@ -38,15 +38,23 @@ LangGraph 的 checkpoint 文档进一步区分完整的 super-step checkpoint �
 | [3d-force-graph](https://github.com/vasturiano/3d-force-graph) | 适合快速验证空间关系，但力导向结果不够确定，不能用位置暗示 ACG 因果 |
 | [deck.gl](https://github.com/visgl/deck.gl) | 大规模节点/边与 GPU 图层有优势；当前 50 级节点规模不需要引入其运行时体积 |
 
-ACG 的主视图不是一张无限扩张的 Canvas，也不是把旧能力继续做成更多页签，而是同一语义目录的两种空间投影：
+ACG 不把所有职责塞进一张无限扩张的 Canvas，也不为每个模式复制图数据。当前工作台把同一语义目录按用户任务组织成五种模式：
 
+- **Overview**：总览 Knowledge / Control / Execution 三层语义与 Case 边界。
+- **Plan**：检查显式依赖、阻塞和候选调度；空间图与顺序检查器只在这里出现。
+- **Run**：查看 Ready frontier 和当前状态；空状态压缩展示，避免五列挤占画布。
+- **Review**：汇总记录边界、运行结论和证据缺口；需要逐帧检查时返回 Plan，而不是复制播放器。
+- **Evidence**：枚举 `supports / explains / implemented_by / checks` 形成的所有显式分支路径，检查论证与验收，不按节点类型补造关系。
+
+Plan 再提供三个互补的辅助视图：
+
+- **Dependency Flow**：主画布用显式 `precedes` 解释计划偏序，Runtime 门禁与主要阻塞由同页检查器呈现。
 - **Orthogonal Planes**：`XY Knowledge / XZ Control / YZ Execution`，共享轴表示层间接口。
 - **Parallel Layers**：三层分开排布，同源投影实例共享 canonical ID。
-- **Selected Run Flow**：只在显式关系上显示方向粒子，runtime 状态成为节点叠加，不再单独做五列页面。
-- **Single-layer Projection**：Knowledge、Control、Execution 可分别正视细看。
-- **Unified Drawer**：Local Trace、Checkpoint/Event、Lint、来源与 raw JSON 按需展开。
 
-当前使用原生 SVG + HTML node card，是为了保证生成文件可离线直接打开、坐标确定、文本清晰且没有 CDN。节点规模或动画需求明显增长后，可把同一个 `spatial-0.1` catalog 接到固定版本的本地 Three.js bundle；渲染引擎变化不能改写 canonical graph 或 runtime 语义。
+四条顺序轨道保持语义分离：Ledger 记录回答“写入顺序”，计划依赖回答“约束顺序”，候选调度回答“可行顺序”，已观测执行回答“executor 实际顺序”。只有最后一条接受 execution telemetry；缺失时显示 unavailable 且不动画。统一详情侧栏承载节点属性、直接关系、来源、raw JSON 与 Lint；逐项顺序检查只在 Plan 中出现。
+
+当前使用原生 SVG + HTML node card，是为了保证生成文件可离线直接打开、坐标确定、文本清晰且没有 CDN。节点规模或动画需求明显增长后，可把同一个 `spatial-0.1` catalog 接到固定版本的本地 Three.js bundle；渲染引擎变化不能改写 canonical graph 或 runtime 语义。公开 Quickstart 的 synthetic runtime 快照只用于展示 frontier 和门禁，不是 execution telemetry，因此已观测执行轨道保持 unavailable。
 
 ## ACG runtime-0.1 选择
 

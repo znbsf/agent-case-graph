@@ -205,29 +205,45 @@ MANIFEST.json
 
 它不会递归扫描整个 workspace，不会读取任意附件，也不会改写输入。输出路径必须显式指定。
 
-## 11. Projection views
+## 11. Workspace modes and projections
 
+HTML 工作台用五种任务模式组织同一份事实，而不是生成五份图：
+
+- Overview：汇总 Knowledge / Control / Execution 三层语义与 Case 边界。
+- Plan：承载显式依赖图、当前候选调度和顺序检查器。
+- Run：只呈现 runtime frontier 与状态，零数量状态压缩为摘要。
+- Review：归纳记录边界、运行结论和未闭合缺口；需要逐步检查时跳回 Plan。
+- Evidence：枚举 `supports / explains / implemented_by / checks` 形成的所有显式分支路径，审查论证和验收；不按节点类型推断缺失边。
+
+Plan 提供三个辅助视图，它们共享 canonical ID、选中状态和详情侧栏：
+
+- Dependency Flow：主画布只显示显式 `precedes` 偏序，Runtime 门禁与主要阻塞由同页检查器呈现；不从布局或记录顺序推断因果。
 - Orthogonal Planes：在 `x/y/z >= 0` 的第一卦限三面角中斜向展示 `XY = Knowledge`、`XZ = Control`、`YZ = Execution`；X/Y/Z 三条正向共享轴分别表达 Knowledge-Control、Execution-Knowledge、Control-Execution 接口。
 - Parallel Layers：Knowledge、Control、Execution 是三张平行投影面；同一 canonical node 可以有多个显示实例，但共享同一个 source ID 与选中状态。
-- Single-layer Projection：从任一主视图切换到 Knowledge、Control 或 Execution，正视该层并展开节点细节。
-- Unified Drawer：节点属性、直接关系、来源、原始 JSON、事件时间线和 Lint 共用一个侧栏，不再形成独立主页面。
 
-`spatial-0.1` 是 Projector 生成的确定性语义目录，包括 layer membership、三组 pairwise interface、所选 runtime instance，以及 canonical relation 的 `flow_kind / actual / animated`。它不保存坐标、相机或避让结果。两个主视图是同一目录的不同投影，不是两份事实。
+Unified Drawer 统一承载节点属性、直接关系、来源、原始 JSON 和 Lint；Ledger 逐项检查只在 Plan 的顺序检查器中出现，不再为每种模式复制详情卡片或播放器。
+
+`spatial-0.1` 是 Projector 生成的确定性语义目录，包括 layer membership、三组 pairwise interface、所选 runtime instance，以及 canonical relation 的 `flow_kind / actual / animated`。它不保存坐标、相机或避让结果。五种模式和三个 Plan 视图都只是同一目录的不同投影，不是不同事实源。
 
 空间图只绘制显式 canonical edge。`first_sequence` 只能用于稳定排序与布局，不能被解释成因果；移动粒子也只叠加在所选 Run 的显式关系上。历史图没有 runtime catalog 时，Execution membership、instance 和动态执行流保持为空，并显示缺失边界。
 
 HTML 使用内嵌数据和原生 JavaScript，不依赖 CDN；JSON 和 Mermaid 用于审查与版本比较。
 
-### 11.1 Visual replay catalog
+### 11.1 Sequence inspector catalog
 
 Projector 从同一份 canonical graph 与原始 Ledger 派生 `replay-0.1`。它不新增事实，也不调用 executor：
 
-- `actual.frames` 只按 Ledger `sequence` 排序；墙上时间只显示，不参与因果排序。
+- Ledger 记录轨道（协议中的 `actual.frames`）只按 Ledger `sequence` 排序；墙上时间只显示，不参与因果排序。它表示记录顺序，不自动升级为 execution telemetry。
+- 计划依赖轨道直接来自 runtime-managed 子图和显式 `precedes`，只读展示约束，不设置播放动画。
+- 候选调度轨道（协议中的 `retrospective`）只从 runtime 门禁和显式依赖派生稳定拓扑候选。
+- 已观测执行轨道只接受明确标记的 execution telemetry；缺失时必须显示 unavailable、禁用播放，并且不得用 Ledger 或 synthetic runtime 状态补造流动动画。
 - 连续 `node.recorded` 的状态变化可以从前一事件推断，但必须标记为 inferred。
 - `capture_mode=live/reconstructed/synthetic` 的证据边界必须随轨迹显示。
 - `visual_only=true` 且 `reexecutes_actions=false` 是协议级安全边界。
 
-`retrospective` 只在所选 Run 的 runtime-managed `Step / Action / Verification` 子图上工作，并且只接受显式 `precedes`。无环时输出稳定拓扑顺序；有环时拒绝生成。当前没有声明成本函数，也没有证明候选图完备，因此固定输出 `optimality=not_proven`，只能称为“复盘推荐路径”。实际记录与复盘推荐各自保留独立游标，不能相互改写。
+`retrospective` 只在所选 Run 的 runtime-managed `Step / Action / Verification` 子图上工作，并且只接受显式 `precedes`。无环时输出稳定拓扑顺序；有环时拒绝生成。当前没有声明成本函数，也没有证明候选图完备，因此固定输出 `optimality=not_proven`，只能称为“候选调度”。计划依赖轨道保持静态只读；Ledger、候选和已观测执行各自保留独立游标，不能相互改写。
+
+公开 Quickstart 的 `capture_mode=synthetic` runtime 快照只演示 frontier、状态叠加与阻塞原因，不是 executor 产生的 execution telemetry；因此已观测执行轨道必须保持 unavailable。
 
 ## 12. Runtime control plane
 
