@@ -291,10 +291,14 @@ h1 {
 .spatial-node-layer { pointer-events: none; }
 .spatial-plane { stroke-width: 1.2; vector-effect: non-scaling-stroke; transition: opacity .18s ease; }
 .spatial-axis { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
+.spatial-origin { fill: var(--surface-raised); stroke: var(--accent); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
 .spatial-axis-label { font-size: 10px; font-weight: 800; paint-order: stroke; stroke: var(--canvas); stroke-width: 3px; }
 .spatial-edge { fill: none; stroke-width: 1.45; vector-effect: non-scaling-stroke; }
 .spatial-edge.dim { opacity: .08 !important; }
 .spatial-edge.selected { stroke-width: 3; opacity: 1 !important; }
+.spatial-edge.replay-future, .spatial-edge.replay-unrelated { opacity: .06 !important; }
+.spatial-edge.replay-past { opacity: .82 !important; }
+.spatial-edge.replay-current { stroke-width: 3.4; opacity: 1 !important; }
 .spatial-node {
   --node-color: var(--accent);
   position: absolute;
@@ -315,6 +319,9 @@ h1 {
 }
 .spatial-node:hover, .spatial-node.selected { border-color: var(--node-color); box-shadow: 0 0 0 2px color-mix(in srgb, var(--node-color) 22%, transparent), 0 7px 18px rgba(25, 38, 57, .15); }
 .spatial-node.dim { opacity: .14; }
+.spatial-node.replay-future, .spatial-node.replay-unrelated { opacity: .10; }
+.spatial-node.replay-past { opacity: .72; }
+.spatial-node.replay-current { border-color: var(--node-color); box-shadow: 0 0 0 4px color-mix(in srgb, var(--node-color) 28%, transparent), 0 9px 24px rgba(25, 38, 57, .20); }
 .spatial-node.projection-copy { border-style: dashed; }
 .spatial-node-top { display: flex; align-items: center; justify-content: space-between; gap: 4px; color: var(--muted); font-size: 7.5px; font-weight: 760; }
 .spatial-node-title { display: -webkit-box; margin-top: 3px; overflow: hidden; font-size: 9.5px; font-weight: 680; line-height: 1.3; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
@@ -325,6 +332,7 @@ h1 {
 .spatial-hud-left { top: 14px; left: 14px; max-width: 320px; }
 .spatial-hud-right { top: 14px; right: 14px; }
 .spatial-hud-bottom { right: 14px; bottom: 14px; grid-auto-flow: column; }
+.spatial-hud-replay { left: 14px; bottom: 14px; width: min(560px, calc(100% - 230px)); }
 .spatial-card { border: 1px solid var(--border); border-radius: 11px; padding: 9px 10px; background: color-mix(in srgb, var(--surface-raised) 92%, transparent); box-shadow: 0 8px 22px rgba(25, 38, 57, .10); backdrop-filter: blur(8px); }
 .spatial-loop { display: grid; grid-template-columns: auto 18px auto 18px auto; align-items: center; gap: 3px; font-size: 9px; font-weight: 720; }
 .spatial-loop-arrow { color: var(--accent); font-size: 14px; text-align: center; }
@@ -345,6 +353,17 @@ h1 {
 .toolbar-action { min-height: 32px; white-space: nowrap; }
 .spatial-layer-summary { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 7px; }
 .spatial-layer-chip { border-radius: 999px; padding: 2px 6px; color: var(--muted); background: var(--surface); font-size: 8px; }
+.replay-card { display: grid; gap: 7px; }
+.replay-head, .replay-controls, .replay-progress-line { display: flex; align-items: center; gap: 6px; }
+.replay-head { justify-content: space-between; }
+.replay-title { font-size: 10px; font-weight: 780; }
+.replay-select, .replay-speed { min-height: 28px; border: 1px solid var(--border); border-radius: 7px; padding: 0 7px; color: var(--text); background: var(--surface); font-size: 9px; }
+.replay-controls button { min-width: 30px; min-height: 28px; border: 1px solid var(--border); border-radius: 7px; color: var(--text); background: var(--surface); }
+.replay-controls button:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+.replay-range { flex: 1 1 auto; min-width: 100px; accent-color: var(--accent); }
+.replay-counter { flex: 0 0 auto; color: var(--muted); font: 9px Consolas, monospace; }
+.replay-boundary { color: var(--muted); font-size: 8px; line-height: 1.35; }
+.replay-status { min-height: 16px; color: var(--text); font-size: 9px; line-height: 1.35; overflow-wrap: anywhere; }
 .drawer-aux { display: grid; gap: 10px; margin-top: 14px; }
 .drawer-panel-list { display: grid; gap: 8px; }
 .drawer-panel-list .event, .drawer-panel-list .finding { margin: 0; padding: 10px; }
@@ -445,6 +464,7 @@ details.raw pre { overflow: auto; max-height: 340px; padding: 10px; border-radiu
   .spatial-stage { min-height: 560px; height: 68vh; }
   .spatial-node { width: 108px; max-width: 30vw; }
   .spatial-hud-left { max-width: 245px; }
+  .spatial-hud-replay { right: 10px; bottom: 58px; left: 10px; width: auto; }
   .spatial-loop { grid-template-columns: 1fr; }
   .spatial-loop-arrow { transform: rotate(90deg); }
 }
@@ -483,6 +503,7 @@ details.raw pre { overflow: auto; max-height: 340px; padding: 10px; border-radiu
           <option value="story" selected>主线关系</option>
           <option value="all">全部关系</option>
         </select>
+        <button id="replayButton" class="toolbar-action" type="button" data-i18n="replayButton">轨迹重放</button>
         <button id="timelineButton" class="toolbar-action" type="button" data-i18n="timelineButton">运行记录</button>
         <button id="qualityButton" class="toolbar-action" type="button" data-i18n="qualityButton">质量</button>
       </div>
@@ -520,6 +541,36 @@ details.raw pre { overflow: auto; max-height: 340px; padding: 10px; border-radiu
               <button class="spatial-layer-button" type="button" data-spatial-layer="knowledge">Knowledge</button>
               <button class="spatial-layer-button" type="button" data-spatial-layer="control">Control</button>
               <button class="spatial-layer-button" type="button" data-spatial-layer="execution">Execution</button>
+            </div>
+          </div>
+
+          <div id="replayHud" class="spatial-hud spatial-hud-replay" hidden>
+            <div class="spatial-card replay-card">
+              <div class="replay-head">
+                <span class="replay-title" data-i18n="replayTitle">轨迹重放</span>
+                <select id="replayMode" class="replay-select" aria-label="重放模式">
+                  <option value="actual">实际记录</option>
+                  <option value="retrospective">复盘推荐</option>
+                </select>
+              </div>
+              <div id="replayBoundary" class="replay-boundary"></div>
+              <div class="replay-controls">
+                <button id="replayReset" type="button" title="重置">↺</button>
+                <button id="replayPrev" type="button" title="上一步">◀</button>
+                <button id="replayPlay" type="button" title="播放">▶</button>
+                <button id="replayNext" type="button" title="下一步">▶|</button>
+                <select id="replaySpeed" class="replay-speed" aria-label="播放速度">
+                  <option value="0.5">0.5×</option>
+                  <option value="1" selected>1×</option>
+                  <option value="2">2×</option>
+                  <option value="4">4×</option>
+                </select>
+              </div>
+              <div class="replay-progress-line">
+                <input id="replayRange" class="replay-range" type="range" min="0" max="0" value="0">
+                <span id="replayCounter" class="replay-counter">0 / 0</span>
+              </div>
+              <div id="replayStatus" class="replay-status"></div>
             </div>
           </div>
 
@@ -588,6 +639,7 @@ const displayLocales = JSON.parse(document.getElementById("display-locales-data"
 const sourceTitle = JSON.parse(document.getElementById("source-title-data").textContent);
 const configuredLocale = JSON.parse(document.getElementById("default-locale-data").textContent);
 const nodeById = new Map(graph.nodes.map(function (node) { return [node.id, node]; }));
+const eventById = new Map(events.map(function (event) { return [event.event_id, event]; }));
 
 const UI = {
   "zh-CN": {
@@ -596,7 +648,7 @@ const UI = {
     tabOrthogonal: "正交三面",
     tabParallel: "平行三层",
     orthogonalTitle: "三张正交语义面",
-    orthogonalSubtitle: "XY 是 Knowledge，XZ 是 Control，YZ 是 Execution；共享轴就是层间接口。",
+    orthogonalSubtitle: "第一卦限三面角：XY 是 Knowledge，XZ 是 Control，YZ 是 Execution；三条正向共享轴就是层间接口。",
     parallelTitle: "三张平行工作层",
     parallelSubtitle: "Knowledge、Control、Execution 分层排布，跨层箭头显示信息实际去向。",
     latestRun: "最新运行",
@@ -605,6 +657,24 @@ const UI = {
     loopControl: "Control 决策",
     loopExecution: "Execution 执行",
     loopHint: "执行结果再回到 Knowledge，形成可复用经验。动态粒子只表示所选 Run 的显式流向。",
+    replayButton: "轨迹重放",
+    replayTitle: "轨迹重放",
+    replayModeLabel: "重放模式",
+    replayActual: "实际记录",
+    replayRetrospective: "复盘推荐",
+    replayReset: "重置",
+    replayPrev: "上一步",
+    replayPlay: "播放",
+    replayPause: "暂停",
+    replayNext: "下一步",
+    replaySpeed: "播放速度",
+    replayUnavailable: "当前 Run 没有可重放轨迹",
+    replayRecommendationGated: "当前 runtime 门禁未满足，不能生成可执行的推荐路径。",
+    replayVisualOnly: "只读可视化；不会重新执行 Action 或外部副作用。",
+    replayRecommendationBoundary: "按显式 precedes 与 runtime 门禁生成的确定性推荐顺序；没有成本函数，因此不是全局最优证明。",
+    replaySynthetic: "示例事件回看，不代表真实执行。",
+    replayReconstructed: "历史重建事件回看，不是原始逐步执行轨迹。",
+    replayLive: "live Ledger 事件回看；原始工具输入输出可能未完整录制。",
     timelineButton: "运行记录",
     qualityButton: "质量",
     timelineTitle: "运行与事件记录",
@@ -651,7 +721,7 @@ const UI = {
     tabOrthogonal: "Orthogonal Planes",
     tabParallel: "Parallel Layers",
     orthogonalTitle: "Three orthogonal semantic planes",
-    orthogonalSubtitle: "XY is Knowledge, XZ is Control, and YZ is Execution; shared axes are layer interfaces.",
+    orthogonalSubtitle: "Positive-octant trihedral view: XY is Knowledge, XZ is Control, and YZ is Execution; positive shared axes are layer interfaces.",
     parallelTitle: "Three parallel work layers",
     parallelSubtitle: "Knowledge, Control, and Execution are separated while cross-layer arrows show actual destinations.",
     latestRun: "Latest run",
@@ -660,6 +730,24 @@ const UI = {
     loopControl: "Control",
     loopExecution: "Execution",
     loopHint: "Execution results return to Knowledge as reusable experience. Moving particles show only explicit flow for the selected Run.",
+    replayButton: "Replay",
+    replayTitle: "Trace replay",
+    replayModeLabel: "Replay mode",
+    replayActual: "Recorded trace",
+    replayRetrospective: "Retrospective recommendation",
+    replayReset: "Reset",
+    replayPrev: "Previous",
+    replayPlay: "Play",
+    replayPause: "Pause",
+    replayNext: "Next",
+    replaySpeed: "Playback speed",
+    replayUnavailable: "The selected Run has no replayable track",
+    replayRecommendationGated: "Current runtime gates are unresolved, so no executable recommendation is available.",
+    replayVisualOnly: "Read-only visualization; Actions and external side effects are never re-executed.",
+    replayRecommendationBoundary: "Deterministic recommendation from explicit precedes edges and runtime gates; no cost function exists, so global optimality is not proven.",
+    replaySynthetic: "Synthetic event review; no real execution is claimed.",
+    replayReconstructed: "Reconstructed event review; not the original step-by-step execution trace.",
+    replayLive: "Live Ledger event review; raw tool input and output may be incomplete.",
     timelineButton: "Run log",
     qualityButton: "Quality",
     timelineTitle: "Run and event log",
@@ -792,6 +880,12 @@ let spatialCamera = {yaw: -0.62, pitch: 0.48, scale: 1};
 let spatialDrag = null;
 let activeAuxPanel = null;
 let spatialRenderState = {instances: [], instanceByKey: new Map(), visibleIds: new Set()};
+let replayVisible = false;
+let replayMode = "actual";
+let replayCursors = {actual: 0, retrospective: 0};
+let replayTimer = null;
+const ORTHOGONAL_SIZE = 520;
+const ORTHOGONAL_INSET = 66;
 
 function resolveInitialLocale() {
   let locale = configuredLocale === "en-US" ? "en-US" : "zh-CN";
@@ -910,6 +1004,157 @@ function selectedRuntimeSnapshot() {
   if (selected) return runs.find(function (run) { return run.run_id === selected; }) || null;
   return runs[0];
 }
+function selectedReplayRun(snapshot) {
+  const runs = graph.replay && Array.isArray(graph.replay.runs) ? graph.replay.runs : [];
+  if (!snapshot || !snapshot.run_id) return null;
+  return runs.find(function (run) { return run.run_id === snapshot.run_id; }) || null;
+}
+function selectedReplayTrack(snapshot) {
+  const run = selectedReplayRun(snapshot);
+  if (!run) return null;
+  return replayMode === "retrospective" ? run.retrospective : run.actual;
+}
+function replayItems(snapshot) {
+  const track = selectedReplayTrack(snapshot);
+  if (!track || track.status !== "available") return [];
+  return replayMode === "retrospective" ? (track.steps || []) : (track.frames || []);
+}
+function replayCursorValue(snapshot) {
+  const items = replayItems(snapshot);
+  const maximum = Math.max(0, items.length - 1);
+  replayCursors[replayMode] = Math.max(0, Math.min(maximum, replayCursors[replayMode] || 0));
+  return replayCursors[replayMode];
+}
+function replayBoundaryText(track) {
+  if (track && replayMode === "retrospective" && track.status === "gated") {
+    const codes = (track.gate_blocker_codes || []).join(", ");
+    return message("replayRecommendationGated") + (codes ? " [" + codes + "]" : "");
+  }
+  if (!track || track.status !== "available") return message("replayUnavailable");
+  if (replayMode === "retrospective") return message("replayRecommendationBoundary");
+  if (track.track_kind === "synthetic-ledger") return message("replaySynthetic");
+  if (track.track_kind === "reconstructed-ledger") return message("replayReconstructed");
+  if (track.track_kind === "live-ledger") return message("replayLive");
+  return track.boundary || message("replayVisualOnly");
+}
+function replayVisualState(snapshot) {
+  const empty = {active: false, mode: replayMode, currentNodeIds: new Set(), currentEdgeIds: new Set(), pastNodeIds: new Set(), pastEdgeIds: new Set(), routeNodeIds: new Set(), routeEdgeIds: new Set(), nodeStatuses: new Map()};
+  if (!replayVisible) return empty;
+  const run = selectedReplayRun(snapshot);
+  const track = selectedReplayTrack(snapshot);
+  const items = replayItems(snapshot);
+  if (!run || !track || !items.length) return empty;
+  const cursor = replayCursorValue(snapshot);
+  if (replayMode === "actual") {
+    const frame = items[cursor];
+    const currentNodeIds = new Set(frame.subject_ids || []);
+    const currentEdgeIds = new Set(frame.edge_id ? [frame.edge_id] : []);
+    const pastNodeIds = new Set();
+    const pastEdgeIds = new Set();
+    const nodeStatuses = new Map();
+    items.slice(0, cursor + 1).forEach(function (item) {
+      (item.subject_ids || []).forEach(function (id) { if (nodeById.has(id)) pastNodeIds.add(id); });
+      if (item.edge_id) pastEdgeIds.add(item.edge_id);
+      const statusId = item.node_id || ((item.kind === "state.changed" && item.subject_ids) ? item.subject_ids[0] : null);
+      if (statusId && item.to_status != null) nodeStatuses.set(statusId, item.to_status);
+    });
+    return {active: true, mode: replayMode, sequence: frame.sequence, frame: frame, currentNodeIds: currentNodeIds, currentEdgeIds: currentEdgeIds, pastNodeIds: pastNodeIds, pastEdgeIds: pastEdgeIds, routeNodeIds: new Set(), routeEdgeIds: new Set(), nodeStatuses: nodeStatuses};
+  }
+  const routeNodeIds = new Set(items.map(function (item) { return item.node_id; }));
+  const routeEdgeIds = new Set((track.edges || []).map(function (edge) { return edge.edge_id; }));
+  const pastNodeIds = new Set(items.slice(0, cursor + 1).map(function (item) { return item.node_id; }));
+  const currentNodeIds = new Set([items[cursor].node_id]);
+  const indexByNode = new Map(items.map(function (item, index) { return [item.node_id, index]; }));
+  const pastEdgeIds = new Set((track.edges || []).filter(function (edge) { return (indexByNode.get(edge.to) || 0) <= cursor; }).map(function (edge) { return edge.edge_id; }));
+  const currentEdgeIds = new Set((track.edges || []).filter(function (edge) { return edge.to === items[cursor].node_id; }).map(function (edge) { return edge.edge_id; }));
+  return {active: true, mode: replayMode, step: items[cursor], currentNodeIds: currentNodeIds, currentEdgeIds: currentEdgeIds, pastNodeIds: pastNodeIds, pastEdgeIds: pastEdgeIds, routeNodeIds: routeNodeIds, routeEdgeIds: routeEdgeIds, nodeStatuses: new Map()};
+}
+function replayNodeClass(node, state) {
+  if (!state.active) return "";
+  if (state.currentNodeIds.has(node.id)) return " replay-current";
+  if (state.mode === "actual") return node.first_sequence <= state.sequence ? " replay-past" : " replay-future";
+  if (!state.routeNodeIds.has(node.id)) return " replay-unrelated";
+  return state.pastNodeIds.has(node.id) ? " replay-past" : " replay-future";
+}
+function replayEdgeClass(relation, state) {
+  if (!state.active) return "";
+  if (state.currentEdgeIds.has(relation.id)) return " replay-current";
+  if (state.mode === "actual") return relation.first_sequence <= state.sequence ? " replay-past" : " replay-future";
+  if (!state.routeEdgeIds.has(relation.id)) return " replay-unrelated";
+  return state.pastEdgeIds.has(relation.id) ? " replay-past" : " replay-future";
+}
+function stopReplayPlayback() {
+  if (replayTimer !== null) window.clearInterval(replayTimer);
+  replayTimer = null;
+  const button = document.getElementById("replayPlay");
+  if (button) {
+    button.textContent = "▶";
+    button.title = message("replayPlay");
+  }
+}
+function setReplayCursor(value) {
+  const snapshot = selectedRuntimeSnapshot();
+  const items = replayItems(snapshot);
+  replayCursors[replayMode] = Math.max(0, Math.min(Math.max(0, items.length - 1), Number(value) || 0));
+  renderSpatial();
+}
+function stepReplay(delta) {
+  stopReplayPlayback();
+  setReplayCursor(replayCursorValue(selectedRuntimeSnapshot()) + delta);
+}
+function toggleReplayPlayback() {
+  if (replayTimer !== null) {
+    stopReplayPlayback();
+    return;
+  }
+  const snapshot = selectedRuntimeSnapshot();
+  const items = replayItems(snapshot);
+  if (items.length < 2) return;
+  if (replayCursorValue(snapshot) >= items.length - 1) replayCursors[replayMode] = 0;
+  const speed = Number(document.getElementById("replaySpeed").value) || 1;
+  document.getElementById("replayPlay").textContent = "Ⅱ";
+  document.getElementById("replayPlay").title = message("replayPause");
+  replayTimer = window.setInterval(function () {
+    const liveSnapshot = selectedRuntimeSnapshot();
+    const liveItems = replayItems(liveSnapshot);
+    const cursor = replayCursorValue(liveSnapshot);
+    if (!liveItems.length || cursor >= liveItems.length - 1) {
+      stopReplayPlayback();
+      return;
+    }
+    replayCursors[replayMode] = cursor + 1;
+    renderSpatial();
+  }, Math.max(120, Math.round(900 / speed)));
+  renderSpatial();
+}
+function renderReplayHud(snapshot) {
+  const hud = document.getElementById("replayHud");
+  hud.hidden = !replayVisible;
+  if (!replayVisible) return;
+  document.getElementById("replayMode").value = replayMode;
+  const track = selectedReplayTrack(snapshot);
+  const items = replayItems(snapshot);
+  const cursor = replayCursorValue(snapshot);
+  const range = document.getElementById("replayRange");
+  range.max = String(Math.max(0, items.length - 1));
+  range.value = String(cursor);
+  range.disabled = !items.length;
+  document.getElementById("replayCounter").textContent = items.length ? (cursor + 1) + " / " + items.length : "0 / 0";
+  document.getElementById("replayBoundary").textContent = replayBoundaryText(track) + " " + message("replayVisualOnly");
+  const status = document.getElementById("replayStatus");
+  if (!items.length) {
+    status.textContent = track && replayMode === "retrospective" && track.status === "gated" ? message("replayRecommendationGated") : message("replayUnavailable");
+  } else if (replayMode === "actual") {
+    const frame = items[cursor];
+    const rawEvent = eventById.get(frame.event_id);
+    status.textContent = "#" + frame.sequence + " · " + eventKindLabel(frame.kind) + " · " + (rawEvent ? eventDetail(rawEvent) : frame.event_id) + " · " + frame.occurred_at + " · " + modeLabel(frame.capture_mode);
+  } else {
+    const step = items[cursor];
+    const node = nodeById.get(step.node_id);
+    status.textContent = (cursor + 1) + ". " + (node ? localizedNodeLabel(node) : step.node_id) + " · " + nodeTypeLabel(step.node_type) + " · " + statusLabel(step.status || "pending");
+  }
+  ["replayReset", "replayPrev", "replayPlay", "replayNext"].forEach(function (id) { document.getElementById(id).disabled = !items.length; });
+}
 function runtimeEntryMap(snapshot) {
   const result = new Map();
   if (!snapshot) return result;
@@ -978,14 +1223,12 @@ function selectedRunScope(snapshot) {
   ordered.forEach(function (node) { if (kept.length < displayLimit && !mandatory.has(node.id)) kept.push(node); });
   return kept;
 }
-function axisPositions(count, span) {
-  const result = [];
-  for (let index = 0; index < count; index += 1) {
-    let value = -span + ((index + 1) * span * 2 / (count + 1));
-    if (Math.abs(value) < 30) value += index % 2 ? 38 : -38;
-    result.push(value);
-  }
-  return result;
+function positiveAxisPositions(count, size) {
+  if (!count) return [];
+  const usable = Math.max(1, size - ORTHOGONAL_INSET * 2);
+  return Array.from({length: count}, function (_, index) {
+    return ORTHOGONAL_INSET + (index + 1) * usable / (count + 1);
+  });
 }
 function gridPositions(count, width, height) {
   if (!count) return [];
@@ -1000,9 +1243,23 @@ function gridPositions(count, width, height) {
     };
   });
 }
+function positiveGridPositions(count, size) {
+  if (!count) return [];
+  const columns = Math.max(1, Math.ceil(Math.sqrt(count * 1.45)));
+  const rows = Math.ceil(count / columns);
+  const usable = Math.max(1, size - ORTHOGONAL_INSET * 2);
+  return Array.from({length: count}, function (_, index) {
+    const column = index % columns;
+    const row = Math.floor(index / columns);
+    return {
+      u: columns === 1 ? size / 2 : ORTHOGONAL_INSET + column * usable / (columns - 1),
+      v: rows === 1 ? size / 2 : ORTHOGONAL_INSET + row * usable / (rows - 1)
+    };
+  });
+}
 function buildOrthogonalInstances(nodes, runtimeMap) {
   if (spatialLayer !== "all") {
-    const positions = gridPositions(nodes.length, 500, 350);
+    const positions = positiveGridPositions(nodes.length, ORTHOGONAL_SIZE);
     return nodes.map(function (node, index) {
       const p = positions[index];
       const point = spatialLayer === "knowledge" ? {x: p.u, y: p.v, z: 0}
@@ -1028,7 +1285,7 @@ function buildOrthogonalInstances(nodes, runtimeMap) {
   });
   const result = [];
   ["knowledge", "control", "execution"].forEach(function (layer) {
-    const positions = gridPositions(buckets[layer].length, 450, 330);
+    const positions = positiveGridPositions(buckets[layer].length, ORTHOGONAL_SIZE);
     buckets[layer].forEach(function (item, index) {
       const p = positions[index];
       const point = layer === "knowledge" ? {x: p.u, y: p.v, z: 0}
@@ -1039,7 +1296,7 @@ function buildOrthogonalInstances(nodes, runtimeMap) {
   });
   [["knowledge-control", "x"], ["control-execution", "z"], ["execution-knowledge", "y"]].forEach(function (entry) {
     const bucket = buckets[entry[0]];
-    const values = axisPositions(bucket.length, 255);
+    const values = positiveAxisPositions(bucket.length, ORTHOGONAL_SIZE);
     bucket.forEach(function (item, index) {
       const point = {x: 0, y: 0, z: 0};
       point[entry[1]] = values[index];
@@ -1070,15 +1327,28 @@ function buildParallelInstances(nodes, runtimeMap) {
   });
   return result;
 }
+function spatialSceneCenter() {
+  if (spatialMode !== "orthogonal") return {x: 0, y: 0, z: 0};
+  const half = ORTHOGONAL_SIZE / 2;
+  if (spatialLayer === "knowledge") return {x: half, y: half, z: 0};
+  if (spatialLayer === "control") return {x: half, y: 0, z: half};
+  if (spatialLayer === "execution") return {x: 0, y: half, z: half};
+  const trihedralCenter = ORTHOGONAL_SIZE / 3;
+  return {x: trihedralCenter, y: trihedralCenter, z: trihedralCenter};
+}
 function projectSpatialPoint(point, width, height) {
+  const center = spatialSceneCenter();
+  const modelX = point.x - center.x;
+  const modelY = point.y - center.y;
+  const modelZ = point.z - center.z;
   const cosYaw = Math.cos(spatialCamera.yaw);
   const sinYaw = Math.sin(spatialCamera.yaw);
-  const x1 = point.x * cosYaw + point.z * sinYaw;
-  const z1 = -point.x * sinYaw + point.z * cosYaw;
+  const x1 = modelX * cosYaw + modelZ * sinYaw;
+  const z1 = -modelX * sinYaw + modelZ * cosYaw;
   const cosPitch = Math.cos(spatialCamera.pitch);
   const sinPitch = Math.sin(spatialCamera.pitch);
-  const y1 = point.y * cosPitch - z1 * sinPitch;
-  const depth = point.y * sinPitch + z1 * cosPitch;
+  const y1 = modelY * cosPitch - z1 * sinPitch;
+  const depth = modelY * sinPitch + z1 * cosPitch;
   const baseScale = Math.min(width / 1040, height / 720) * spatialCamera.scale;
   return {x: width / 2 + x1 * baseScale, y: height / 2 - y1 * baseScale + 18, depth: depth};
 }
@@ -1116,7 +1386,7 @@ function svgElement(name, attrs) {
   return element;
 }
 function spatialPlaneDefinitions() {
-  const size = 315;
+  const size = spatialMode === "orthogonal" ? ORTHOGONAL_SIZE : 315;
   if (spatialMode === "parallel") {
     return [
       {layer: "knowledge", label: "Knowledge", points: [{x:-size,y:-size,z:-290},{x:size,y:-size,z:-290},{x:size,y:size,z:-290},{x:-size,y:size,z:-290}]},
@@ -1125,9 +1395,9 @@ function spatialPlaneDefinitions() {
     ];
   }
   return [
-    {layer: "knowledge", label: "XY · Knowledge", points: [{x:-size,y:-size,z:0},{x:size,y:-size,z:0},{x:size,y:size,z:0},{x:-size,y:size,z:0}]},
-    {layer: "control", label: "XZ · Control", points: [{x:-size,y:0,z:-size},{x:size,y:0,z:-size},{x:size,y:0,z:size},{x:-size,y:0,z:size}]},
-    {layer: "execution", label: "YZ · Execution", points: [{x:0,y:-size,z:-size},{x:0,y:size,z:-size},{x:0,y:size,z:size},{x:0,y:-size,z:size}]}
+    {layer: "knowledge", label: "XY · Knowledge", points: [{x:0,y:0,z:0},{x:size,y:0,z:0},{x:size,y:size,z:0},{x:0,y:size,z:0}]},
+    {layer: "control", label: "XZ · Control", points: [{x:0,y:0,z:0},{x:size,y:0,z:0},{x:size,y:0,z:size},{x:0,y:0,z:size}]},
+    {layer: "execution", label: "YZ · Execution", points: [{x:0,y:0,z:0},{x:0,y:size,z:0},{x:0,y:size,z:size},{x:0,y:0,z:size}]}
   ];
 }
 function chooseSpatialInstance(instances, nodeId, flowKind) {
@@ -1159,13 +1429,16 @@ function renderSpatial() {
   const stage = document.getElementById("spatialStage");
   const svg = document.getElementById("spatialSvg");
   const nodeLayer = document.getElementById("spatialNodeLayer");
-  const width = Math.max(640, stage.clientWidth || 1200);
+  const width = Math.max(320, stage.clientWidth || 1200);
   const height = Math.max(520, stage.clientHeight || 680);
+  stage.dataset.coordinateDomain = spatialMode === "orthogonal" ? "x>=0;y>=0;z>=0" : "centered-parallel";
+  stage.dataset.camera = "yaw=" + spatialCamera.yaw + ";pitch=" + spatialCamera.pitch + ";scale=" + spatialCamera.scale;
   svg.setAttribute("viewBox", "0 0 " + width + " " + height);
   clearElement(svg);
   clearElement(nodeLayer);
   const snapshot = selectedRuntimeSnapshot();
   const runtimeMap = runtimeEntryMap(snapshot);
+  const replayState = replayVisualState(snapshot);
   let nodes = selectedRunScope(snapshot);
   if (spatialLayer !== "all") nodes = nodes.filter(function (node) { return effectiveMembership(node, runtimeMap).includes(spatialLayer); });
   let instances = spatialMode === "orthogonal" ? buildOrthogonalInstances(nodes, runtimeMap) : buildParallelInstances(nodes, runtimeMap);
@@ -1188,6 +1461,8 @@ function renderSpatial() {
   }).sort(function (left, right) { return left.depth - right.depth; }).forEach(function (entry) {
     const color = SPATIAL_LAYER_COLORS[entry.plane.layer];
     const polygon = svgElement("polygon", {class: "spatial-plane", points: entry.points.map(function (point) { return point.x.toFixed(1) + "," + point.y.toFixed(1); }).join(" ")});
+    polygon.dataset.layer = entry.plane.layer;
+    polygon.dataset.modelPoints = entry.plane.points.map(function (point) { return point.x + "," + point.y + "," + point.z; }).join(";");
     polygon.setAttribute("style", "fill:color-mix(in srgb," + color + " 7%,transparent);stroke:color-mix(in srgb," + color + " 55%,transparent)");
     svg.appendChild(polygon);
     const anchor = entry.points[2];
@@ -1197,14 +1472,23 @@ function renderSpatial() {
   });
 
   if (spatialMode === "orthogonal" && spatialLayer === "all") {
-    [[{x:-340,y:0,z:0},{x:340,y:0,z:0},"X · K↔C"],[{x:0,y:-340,z:0},{x:0,y:340,z:0},"Y · E↔K"],[{x:0,y:0,z:-340},{x:0,y:0,z:340},"Z · C↔E"]].forEach(function (axis) {
+    const axisEnd = ORTHOGONAL_SIZE + 30;
+    [[{x:0,y:0,z:0},{x:axisEnd,y:0,z:0},"X+ · K↔C"],[{x:0,y:0,z:0},{x:0,y:axisEnd,z:0},"Y+ · E↔K"],[{x:0,y:0,z:0},{x:0,y:0,z:axisEnd},"Z+ · C↔E"]].forEach(function (axis) {
       const from = projectSpatialPoint(axis[0], width, height);
       const to = projectSpatialPoint(axis[1], width, height);
-      svg.appendChild(svgElement("line", {class: "spatial-axis", x1: from.x, y1: from.y, x2: to.x, y2: to.y, stroke: "var(--edge)"}));
+      const line = svgElement("line", {class: "spatial-axis", x1: from.x, y1: from.y, x2: to.x, y2: to.y, stroke: "var(--edge)"});
+      line.dataset.modelFrom = "0,0,0";
+      line.dataset.modelTo = axis[1].x + "," + axis[1].y + "," + axis[1].z;
+      svg.appendChild(line);
       const label = svgElement("text", {class: "spatial-axis-label", x: to.x, y: to.y - 7, fill: "var(--muted)", "text-anchor": "middle"});
       label.textContent = axis[2];
       svg.appendChild(label);
     });
+    const origin = projectSpatialPoint({x:0,y:0,z:0}, width, height);
+    svg.appendChild(svgElement("circle", {class: "spatial-origin", cx: origin.x, cy: origin.y, r: 5, "data-model-point": "0,0,0"}));
+    const originLabel = svgElement("text", {class: "spatial-axis-label", x: origin.x - 8, y: origin.y + 15, fill: "var(--accent)", "text-anchor": "end"});
+    originLabel.textContent = "O";
+    svg.appendChild(originLabel);
   }
 
   if (spatialMode === "parallel" && spatialLayer === "all") {
@@ -1243,13 +1527,14 @@ function renderSpatial() {
     const selected = selectedId && (relation.from === selectedId || relation.to === selectedId);
     const dim = related && (!related.has(relation.from) || !related.has(relation.to));
     const color = SPATIAL_FLOW_COLORS[flowKind] || "var(--edge)";
-    const path = svgElement("path", {class: "spatial-edge" + (selected ? " selected" : "") + (dim ? " dim" : ""), d: pathText, stroke: color, opacity: selected ? 1 : .56, "marker-end": "url(#spatialArrow)"});
+    const path = svgElement("path", {class: "spatial-edge" + (selected ? " selected" : "") + (dim ? " dim" : "") + replayEdgeClass(relation, replayState), d: pathText, stroke: color, opacity: selected ? 1 : .56, "marker-end": "url(#spatialArrow)"});
     path.appendChild(document.createElementNS("http://www.w3.org/2000/svg", "title")).textContent = edgeTypeLabel(relation.type) + ": " + relation.from + " → " + relation.to;
     svg.appendChild(path);
     const explicitRunFlow = Boolean(snapshot && snapshot.has_runtime_overlay && relation.actual !== false && SPATIAL_FLOW_TYPES.has(relation.type) && runScope.has(relation.from) && runScope.has(relation.to));
-    if ((relation.animated || explicitRunFlow) && !dim) {
+    const replayParticle = replayState.active && replayState.currentEdgeIds.has(relation.id);
+    if (((!replayState.active && (relation.animated || explicitRunFlow)) || replayParticle) && !dim) {
       const particle = svgElement("circle", {r: selected ? 4 : 3, fill: color, opacity: .92});
-      const motion = svgElement("animateMotion", {dur: (2.7 + (index % 4) * .45) + "s", repeatCount: "indefinite", path: pathText});
+      const motion = svgElement("animateMotion", {dur: replayParticle ? ".8s" : (2.7 + (index % 4) * .45) + "s", repeatCount: replayParticle ? "1" : "indefinite", path: pathText});
       particle.appendChild(motion);
       svg.appendChild(particle);
     }
@@ -1259,8 +1544,9 @@ function renderSpatial() {
     const screen = projected.get(instance.key);
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "spatial-node" + (instance.projectionCopy ? " projection-copy" : "") + (selectedId === instance.sourceId ? " selected" : "") + (related && !related.has(instance.sourceId) ? " dim" : "");
+    button.className = "spatial-node" + (instance.projectionCopy ? " projection-copy" : "") + (selectedId === instance.sourceId ? " selected" : "") + (related && !related.has(instance.sourceId) ? " dim" : "") + replayNodeClass(instance.node, replayState);
     button.dataset.nodeId = instance.sourceId;
+    button.dataset.modelPoint = instance.point.x + "," + instance.point.y + "," + instance.point.z;
     button.style.left = screen.x + "px";
     button.style.top = screen.y + "px";
     button.style.zIndex = String(30 + index);
@@ -1269,7 +1555,8 @@ function renderSpatial() {
     const top = document.createElement("div");
     top.className = "spatial-node-top";
     const runtimeEntry = runtimeMap.get(instance.sourceId);
-    top.append(createText("span", "", nodeTypeLabel(instance.node.type)), createText("span", "", runtimeEntry ? statusLabel(runtimeEntry.runtime_lane) : instance.layers.map(function (layer) { return layer[0].toUpperCase(); }).join("/")));
+    const replayStatus = replayState.nodeStatuses.get(instance.sourceId);
+    top.append(createText("span", "", nodeTypeLabel(instance.node.type)), createText("span", "", replayStatus ? statusLabel(replayStatus) : runtimeEntry ? statusLabel(runtimeEntry.runtime_lane) : instance.layers.map(function (layer) { return layer[0].toUpperCase(); }).join("/")));
     button.append(top, createText("div", "spatial-node-title", localizedNodeLabel(instance.node)));
     button.title = instance.node.id + " · " + instance.layers.join(" / ");
     button.addEventListener("click", function (event) { event.stopPropagation(); selectNode(instance.sourceId); });
@@ -1289,6 +1576,7 @@ function renderSpatial() {
   if (!snapshot || !snapshot.has_runtime_overlay) summary.appendChild(createText("span", "spatial-layer-chip", message("executionNoRuntime")));
   document.getElementById("spatialTitle").textContent = message(spatialMode === "orthogonal" ? "orthogonalTitle" : "parallelTitle");
   document.getElementById("spatialSubtitle").textContent = message(spatialMode === "orthogonal" ? "orthogonalSubtitle" : "parallelSubtitle");
+  renderReplayHud(snapshot);
 }
 function selectNode(id) {
   selectedId = selectedId === id ? null : id;
@@ -1522,12 +1810,20 @@ function updateStaticText() {
   document.getElementById("search").placeholder = message("searchPlaceholder");
   setOptionText("relationFilter", "story", message("relationsStory"));
   setOptionText("relationFilter", "all", message("relationsAll"));
+  setOptionText("replayMode", "actual", message("replayActual"));
+  setOptionText("replayMode", "retrospective", message("replayRetrospective"));
   document.getElementById("drawerClose").setAttribute("aria-label", message("close"));
   document.getElementById("resetCamera").title = message("resetCamera");
   document.getElementById("rotateLeft").title = message("rotateLeft");
   document.getElementById("rotateRight").title = message("rotateRight");
   document.getElementById("rotateUp").title = message("rotateUp");
   document.getElementById("rotateDown").title = message("rotateDown");
+  document.getElementById("replayMode").setAttribute("aria-label", message("replayModeLabel"));
+  document.getElementById("replaySpeed").setAttribute("aria-label", message("replaySpeed"));
+  document.getElementById("replayReset").title = message("replayReset");
+  document.getElementById("replayPrev").title = message("replayPrev");
+  document.getElementById("replayPlay").title = replayTimer === null ? message("replayPlay") : message("replayPause");
+  document.getElementById("replayNext").title = message("replayNext");
   updateThemeLabel();
   rebuildSpatialRunOptions();
   renderSummary();
@@ -1571,8 +1867,16 @@ function init() {
   document.getElementById("languageSelect").addEventListener("change", function (event) { setLocale(event.target.value); });
   document.getElementById("themeToggle").addEventListener("click", function () { toggleTheme(); renderSpatial(); });
   document.getElementById("search").addEventListener("input", renderSpatial);
-  document.getElementById("spatialRunFilter").addEventListener("change", function () { selectedId = null; closeDrawer(); renderSpatial(); });
+  document.getElementById("spatialRunFilter").addEventListener("change", function () { selectedId = null; stopReplayPlayback(); replayCursors = {actual: 0, retrospective: 0}; closeDrawer(); renderSpatial(); });
   document.getElementById("relationFilter").addEventListener("change", renderSpatial);
+  document.getElementById("replayButton").addEventListener("click", function () { replayVisible = !replayVisible; if (!replayVisible) stopReplayPlayback(); renderSpatial(); });
+  document.getElementById("replayMode").addEventListener("change", function (event) { stopReplayPlayback(); replayMode = event.target.value === "retrospective" ? "retrospective" : "actual"; renderSpatial(); });
+  document.getElementById("replayReset").addEventListener("click", function () { stopReplayPlayback(); setReplayCursor(0); });
+  document.getElementById("replayPrev").addEventListener("click", function () { stepReplay(-1); });
+  document.getElementById("replayPlay").addEventListener("click", toggleReplayPlayback);
+  document.getElementById("replayNext").addEventListener("click", function () { stepReplay(1); });
+  document.getElementById("replayRange").addEventListener("input", function (event) { stopReplayPlayback(); setReplayCursor(event.target.value); });
+  document.getElementById("replaySpeed").addEventListener("change", function () { if (replayTimer !== null) { stopReplayPlayback(); toggleReplayPlayback(); } });
   document.getElementById("timelineButton").addEventListener("click", function () { openAuxPanel("timeline"); });
   document.getElementById("qualityButton").addEventListener("click", function () { openAuxPanel("quality"); });
   document.querySelectorAll(".spatial-layer-button").forEach(function (button) {

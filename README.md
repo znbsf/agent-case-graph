@@ -28,15 +28,16 @@ Canonical typed graph
   | Control:   Goal / Run / Step / Approval / Dependency / Gate
   | Execution: Ready / Running / Blocked / Completed / Checkpoint
           |
-          +--> Orthogonal planes: XY Knowledge / XZ Control / YZ Execution
+          +--> First-octant trihedral: XY Knowledge / XZ Control / YZ Execution
           +--> Parallel layers:   Knowledge / Control / Execution
+          +--> Replay: recorded Ledger / retrospective recommendation
 ```
 
 同一个 canonical node 可以出现在多个投影中，但共享稳定 ID。页面坐标、卡片位置和记录顺序都不会被升级成新的因果事实。
 
 ## 两个主要工作面
 
-- **正交三面**：从空间关系观察 `Knowledge / Control / Execution` 的接口和信息去向。
+- **正交三面**：在 `x/y/z >= 0` 的第一卦限中斜向展示三张正交面；从空间关系观察 `Knowledge / Control / Execution` 的接口和信息去向。
 - **平行三层**：把三层拉开，适合日常沿着显式箭头阅读和定位。
 
 旧式的“信息流 / 执行控制 / 结构图 / 时间线 / 质量”不会形成五个独立页面：canonical 关系成为空间箭头，所选 Run 的显式路径成为方向粒子，runtime 状态叠加在节点上，事件、Lint 和节点来源进入统一侧栏。
@@ -115,6 +116,17 @@ Mutating Action 还必须同时满足：
 
 Runtime 只负责“选什么、为什么、是否允许、完成后下一步是什么”。实际工具调用属于独立 executor adapter。
 
+## 双轨重放
+
+空间工作台中的“轨迹重放”有两条相互独立的轨道：
+
+- **实际记录**：严格按 Ledger `sequence` 逐事件回看；`occurred_at` 只用于显示。它是只读可视化，不会重新执行 Action、工具调用或外部副作用。
+- **复盘推荐**：只使用所选 Run 内的 runtime-managed 节点和显式 `precedes` 边，按 runtime 门禁及 `(priority, first_sequence, node_id)` 生成稳定拓扑顺序。
+
+“复盘推荐”不是全局最优证明：当前没有完整替代分支、声明的成本函数和完备成本数据。页面会始终显示这个边界。
+
+轨迹真实性由 `capture_mode` 决定：`live` 是处理过程中写入的 Ledger 事件，但原始工具输入输出仍可能不完整；`reconstructed` 是历史证据重建，不是原始逐步轨迹；`synthetic` 只用于演示。公开 Quickstart 因此显示“示例事件回看”，不会冒充真实执行。
+
 ## 事实与隐私边界
 
 ```text
@@ -155,7 +167,7 @@ python -m compileall -q agent_case_graph
 python -m pip wheel --no-deps --wheel-dir .artifacts/wheel .
 ```
 
-当前测试覆盖 Ledger 连续性、历史只读导入、Lint、状态机、Ready frontier、Approval scope、Checkpoint、空间目录确定性、本地化和自包含 HTML。
+当前测试覆盖 Ledger 连续性、历史只读导入、Lint、状态机、Ready frontier、Approval scope、Checkpoint、空间目录确定性、sequence-authoritative 重放、推荐路径环检测、本地化和自包含 HTML。
 
 ## 设计文档
 
@@ -167,7 +179,7 @@ python -m pip wheel --no-deps --wheel-dir .artifacts/wheel .
 ## 已知边界
 
 - 尚无跨 Case 索引、Graph DB、Skill 自动晋升或 Experience Store。
-- 尚无并行 join、lease/claim、多进程 executor、自动 retry、replay 或 fork。
+- 尚无并行 join、lease/claim、多进程 executor、自动 retry、执行级 replay 或 fork；现有 replay 只重放 Ledger 的视觉状态，不重放工具与副作用。
 - SVG 空间视图是确定性 2.5D 投影，不是 WebGL 自由漫游引擎。
 - Importer 只能结构化提取明确支持的 Markdown/Manifest；语义 Curation 仍需审查。
 

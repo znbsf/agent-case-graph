@@ -170,7 +170,7 @@ Projector 读取 Seed Ledger，生成自身的 graph.json、Mermaid 和 HTML。
 
 CLI 用 append-only 命令记录实现、测试和验证事件。
 
-### Level 3: Historical replay
+### Level 3: Historical reconstruction
 
 Importer 只读导入一个真实 Case；所有事后重建事件标记为 reconstructed。
 
@@ -207,7 +207,7 @@ MANIFEST.json
 
 ## 11. Projection views
 
-- Orthogonal Planes：`XY = Knowledge`、`XZ = Control`、`YZ = Execution`；X/Y/Z 三条共享轴分别表达 Knowledge-Control、Execution-Knowledge、Control-Execution 接口。
+- Orthogonal Planes：在 `x/y/z >= 0` 的第一卦限三面角中斜向展示 `XY = Knowledge`、`XZ = Control`、`YZ = Execution`；X/Y/Z 三条正向共享轴分别表达 Knowledge-Control、Execution-Knowledge、Control-Execution 接口。
 - Parallel Layers：Knowledge、Control、Execution 是三张平行投影面；同一 canonical node 可以有多个显示实例，但共享同一个 source ID 与选中状态。
 - Single-layer Projection：从任一主视图切换到 Knowledge、Control 或 Execution，正视该层并展开节点细节。
 - Unified Drawer：节点属性、直接关系、来源、原始 JSON、事件时间线和 Lint 共用一个侧栏，不再形成独立主页面。
@@ -217,6 +217,17 @@ MANIFEST.json
 空间图只绘制显式 canonical edge。`first_sequence` 只能用于稳定排序与布局，不能被解释成因果；移动粒子也只叠加在所选 Run 的显式关系上。历史图没有 runtime catalog 时，Execution membership、instance 和动态执行流保持为空，并显示缺失边界。
 
 HTML 使用内嵌数据和原生 JavaScript，不依赖 CDN；JSON 和 Mermaid 用于审查与版本比较。
+
+### 11.1 Visual replay catalog
+
+Projector 从同一份 canonical graph 与原始 Ledger 派生 `replay-0.1`。它不新增事实，也不调用 executor：
+
+- `actual.frames` 只按 Ledger `sequence` 排序；墙上时间只显示，不参与因果排序。
+- 连续 `node.recorded` 的状态变化可以从前一事件推断，但必须标记为 inferred。
+- `capture_mode=live/reconstructed/synthetic` 的证据边界必须随轨迹显示。
+- `visual_only=true` 且 `reexecutes_actions=false` 是协议级安全边界。
+
+`retrospective` 只在所选 Run 的 runtime-managed `Step / Action / Verification` 子图上工作，并且只接受显式 `precedes`。无环时输出稳定拓扑顺序；有环时拒绝生成。当前没有声明成本函数，也没有证明候选图完备，因此固定输出 `optimality=not_proven`，只能称为“复盘推荐路径”。实际记录与复盘推荐各自保留独立游标，不能相互改写。
 
 ## 12. Runtime control plane
 
@@ -274,6 +285,6 @@ Running 之前重新计算所有图门禁；Completed/Failed 只能从 active �
 append-only `node.recorded` 事件保存，Checkpoint ID 绑定事件序号，因此崩溃后可由 Ledger
 重建当前 frontier。
 
-runtime-0.1 不自动执行任意命令，也没有并发 lease、条件边、join、retry、replay 或 fork。
+runtime-0.1 不自动执行任意命令，也没有并发 lease、条件边、join、retry、执行级 replay 或 fork。
 这些能力必须在明确 executor contract、幂等键、超时、输出上限、权限和副作用恢复协议后增加。
-尤其 replay 不能默认重放 mutating Action。
+现有 `replay-0.1` 只读回放 Ledger 的视觉状态；它不能、也不会重放 mutating Action。
