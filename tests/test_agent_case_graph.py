@@ -449,6 +449,8 @@ class AgentCaseGraphTests(unittest.TestCase):
         self.assertIn('id="timelineButton"', html_text)
         self.assertIn('id="qualityButton"', html_text)
         self.assertIn("function renderSpatial", html_text)
+        self.assertIn("return runs[0];", html_text)
+        self.assertIn("right.first_sequence", html_text)
         self.assertIn("正交三面", html_text)
         self.assertIn("平行三层", html_text)
         self.assertIn("Knowledge", html_text)

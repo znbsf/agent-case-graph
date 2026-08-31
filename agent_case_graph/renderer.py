@@ -887,23 +887,28 @@ function spatialRunCandidates() {
   const runtimeRuns = graph.runtime && Array.isArray(graph.runtime.runs) ? graph.runtime.runs : [];
   runtimeRuns.forEach(function (run) {
     const canonicalRun = nodeById.get(run.run_id);
-    result.push(Object.assign({}, run, {run_label: canonicalRun ? localizedNodeLabel(canonicalRun) : run.run_label, has_runtime_overlay: true}));
+    result.push(Object.assign({}, run, {
+      run_label: canonicalRun ? localizedNodeLabel(canonicalRun) : run.run_label,
+      first_sequence: canonicalRun ? canonicalRun.first_sequence : 0,
+      has_runtime_overlay: true
+    }));
     seen.add(run.run_id);
   });
   graph.nodes.filter(function (node) { return node.type === "Run" && !seen.has(node.id); }).slice().sort(function (left, right) {
     return (right.first_sequence || 0) - (left.first_sequence || 0) || left.id.localeCompare(right.id);
   }).forEach(function (node) {
-    result.push({run_id: node.id, run_label: localizedNodeLabel(node), status: node.attrs && node.attrs.status, case_state: rootState(), has_runtime_overlay: false});
+    result.push({run_id: node.id, run_label: localizedNodeLabel(node), status: node.attrs && node.attrs.status, case_state: rootState(), first_sequence: node.first_sequence || 0, has_runtime_overlay: false});
   });
-  return result;
+  return result.sort(function (left, right) {
+    return (right.first_sequence || 0) - (left.first_sequence || 0) || left.run_id.localeCompare(right.run_id);
+  });
 }
 function selectedRuntimeSnapshot() {
   const runs = spatialRunCandidates();
   if (!runs.length) return null;
   const selected = document.getElementById("spatialRunFilter").value;
   if (selected) return runs.find(function (run) { return run.run_id === selected; }) || null;
-  const preferred = graph.spatial && graph.spatial.runtime ? graph.spatial.runtime.selected_run_id : null;
-  return runs.find(function (run) { return run.run_id === preferred; }) || runs[0];
+  return runs[0];
 }
 function runtimeEntryMap(snapshot) {
   const result = new Map();
