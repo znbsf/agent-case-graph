@@ -15,8 +15,6 @@ Agent Case Graph（ACG）把 Agent 处理问题的过程保存为 append-only JS
 
 > Status: `v0.1.0` alpha。运行时可以选路、解释阻塞并验证 Checkpoint，但不会自动执行任意 shell 命令。
 
-![Quickstart orthogonal planes](docs/assets/quickstart-orthogonal.png)
-
 ## 核心结构
 
 ```text
@@ -28,21 +26,28 @@ Canonical typed graph
   | Control:   Goal / Run / Step / Approval / Dependency / Gate
   | Execution: Ready / Running / Blocked / Completed / Checkpoint
           |
-          +--> First-octant trihedral: XY Knowledge / XZ Control / YZ Execution
-          +--> Parallel layers:   Knowledge / Control / Execution
-          +--> Replay: recorded Ledger / retrospective recommendation
+          +--> Workspace: Overview / Plan / Run / Review / Evidence
+          +--> Plan views: dependency flow / orthogonal planes / parallel layers
+          +--> Sequence inspector: Ledger / Plan / Candidate / Observed
 ```
 
 同一个 canonical node 可以出现在多个投影中，但共享稳定 ID。页面坐标、卡片位置和记录顺序都不会被升级成新的因果事实。
 
-## 两个主要工作面
+## 一个工作台，五种任务模式
 
-- **正交三面**：在 `x/y/z >= 0` 的第一卦限中斜向展示三张正交面；从空间关系观察 `Knowledge / Control / Execution` 的接口和信息去向。
-- **平行三层**：把三层拉开，适合日常沿着显式箭头阅读和定位。
+- **总览（Overview）**：用 Knowledge / Control / Execution 三层语义概括 Case，先回答“知道什么、计划什么、执行到哪里”。
+- **规划（Plan）**：检查显式依赖、当前候选顺序和阻塞关系；这是唯一承载空间图与顺序检查器的模式。
+- **运行（Run）**：按 `ready / running / blocked / completed / failed` 展示当前 frontier；空状态合并提示，不占据整列。
+- **复盘（Review）**：聚合记录边界、运行结论与证据缺口，并回到规划页检查顺序，不复制一套播放器。
+- **证据（Evidence）**：枚举 `supports / explains / implemented_by / checks` 形成的所有显式分支路径，检查论证和验收关系，不按节点类型补造链路。
 
-旧式的“信息流 / 执行控制 / 结构图 / 时间线 / 质量”不会形成五个独立页面：canonical 关系成为空间箭头，所选 Run 的显式路径成为方向粒子，runtime 状态叠加在节点上，事件、Lint 和节点来源进入统一侧栏。
+规划页包含三个互补的辅助视图：
 
-HTML 由原生 SVG、HTML 和 JavaScript 组成，自包含、无 CDN，可以离线直接打开。
+- **依赖图**：主画布只用显式 `precedes` 解释计划偏序；当前 Runtime 门禁与主要阻塞在同页检查器中显示。
+- **结构三面**：在 `x/y/z >= 0` 的第一卦限中展示 `XY = Knowledge / XZ = Control / YZ = Execution` 的层间接口。
+- **三层投影**：把 Knowledge / Control / Execution 拉开，便于沿显式关系阅读和定位。
+
+五种模式共享同一份 canonical graph、Run 选择和详情侧栏，不复制事实，也不让页面位置成为因果。HTML 由原生 SVG、HTML 和 JavaScript 组成，自包含、无 CDN，可以离线直接打开。
 
 ## 快速开始
 
@@ -116,16 +121,18 @@ Mutating Action 还必须同时满足：
 
 Runtime 只负责“选什么、为什么、是否允许、完成后下一步是什么”。实际工具调用属于独立 executor adapter。
 
-## 双轨重放
+## 四条顺序轨道
 
-空间工作台中的“轨迹重放”有两条相互独立的轨道：
+规划页的顺序检查器把四种含义分开；计划依赖保持静态只读，其余可播放轨道的游标互不改写：
 
-- **实际记录**：严格按 Ledger `sequence` 逐事件回看；`occurred_at` 只用于显示。它是只读可视化，不会重新执行 Action、工具调用或外部副作用。
-- **复盘推荐**：只使用所选 Run 内的 runtime-managed 节点和显式 `precedes` 边，按 runtime 门禁及 `(priority, first_sequence, node_id)` 生成稳定拓扑顺序。
+- **Ledger 记录**：严格按 Ledger `sequence` 逐事件回看；`occurred_at` 只用于显示。它回答“记录以什么顺序写入”，不是执行轨迹。
+- **计划依赖**：只读展示 runtime-managed 节点及显式 `precedes` 约束，回答“依赖允许怎样流通”。
+- **候选调度**：按 runtime 门禁及 `(priority, first_sequence, node_id)` 生成稳定拓扑候选，回答“下一种可行顺序是什么”。
+- **已观测执行**：只在输入包含明确的 execution telemetry 时呈现，回答“executor 实际经过了哪些节点”。没有该数据时显示 unavailable，并禁用播放和流动动画。
 
-“复盘推荐”不是全局最优证明：当前没有完整替代分支、声明的成本函数和完备成本数据。页面会始终显示这个边界。
+候选调度不是全局最优证明：当前没有完整替代分支、声明的成本函数和完备成本数据，页面会持续显示 `optimality=not_proven` 边界。所有轨道都是只读可视化，不会重新执行 Action、工具调用或外部副作用。
 
-轨迹真实性由 `capture_mode` 决定：`live` 是处理过程中写入的 Ledger 事件，但原始工具输入输出仍可能不完整；`reconstructed` 是历史证据重建，不是原始逐步轨迹；`synthetic` 只用于演示。公开 Quickstart 因此显示“示例事件回看”，不会冒充真实执行。
+轨迹真实性由 `capture_mode` 决定：`live` 是处理过程中写入的 Ledger 事件，但原始工具输入输出仍可能不完整；`reconstructed` 是历史证据重建，不是原始逐步轨迹；`synthetic` 只用于演示。公开 Quickstart 的 synthetic runtime 快照只用于展示 frontier 与门禁，不是 execution telemetry；因此“已观测执行”保持 unavailable，也不会播放流动动画。
 
 ## 事实与隐私边界
 

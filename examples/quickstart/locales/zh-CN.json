@@ -7,7 +7,7 @@
     "goal:DEMO-001:clarity": "让证据、控制与执行易于检查",
     "observation:DEMO-001:separation": "Agent 工作混合了事实、决策与运行状态",
     "claim:DEMO-001:canonical": "同一 canonical graph 可以支持多个易读投影",
-    "decision:DEMO-001:two-views": "使用正交三面与平行三层",
+    "decision:DEMO-001:two-views": "使用五模式工作台与辅助空间投影",
     "step:DEMO-001:inspect": "检查证据与显式依赖",
     "action:DEMO-001:select": "从图中选择下一项安全动作",
     "verification:DEMO-001:review": "验证所选动作及其证据路径",
