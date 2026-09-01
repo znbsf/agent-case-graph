@@ -209,23 +209,22 @@ MANIFEST.json
 
 HTML 工作台用五种任务模式组织同一份事实，而不是生成五份图：
 
-- Overview：汇总 Knowledge / Control / Execution 三层语义与 Case 边界。
+- Overview：汇总 State / Evidence、Control / Policy、Action / Interface 三层闭环与 Case 边界；Runtime Trace 只叠加状态。
 - Plan：承载显式依赖图、当前候选调度和顺序检查器。
 - Run：只呈现 runtime frontier 与状态，零数量状态压缩为摘要。
 - Review：归纳记录边界、运行结论和未闭合缺口；需要逐步检查时跳回 Plan。
 - Evidence：枚举 `supports / explains / implemented_by / checks` 形成的所有显式分支路径，审查论证和验收；不按节点类型推断缺失边。
 
-Plan 提供三个辅助视图，它们共享 canonical ID、选中状态和详情侧栏：
+Plan 提供两个辅助视图，它们共享 canonical ID、选中状态和详情侧栏：
 
 - Dependency Flow：主画布只显示显式 `precedes` 偏序，Runtime 门禁与主要阻塞由同页检查器呈现；不从布局或记录顺序推断因果。
-- Orthogonal Planes：在 `x/y/z >= 0` 的第一卦限三面角中斜向展示 `XY = Knowledge`、`XZ = Control`、`YZ = Execution`；X/Y/Z 三条正向共享轴分别表达 Knowledge-Control、Execution-Knowledge、Control-Execution 接口。
-- Parallel Layers：Knowledge、Control、Execution 是三张平行投影面；同一 canonical node 可以有多个显示实例，但共享同一个 source ID 与选中状态。
+- Orthogonal Planes：在 `x/y/z >= 0` 的第一卦限三面角中斜向展示 `XY = State`、`XZ = Control`、`YZ = Action`；X/Y/Z 三条正向共享轴分别表达 State-Control、Action-State、Control-Action 接口。每个节点只属于一个面，跨面线经对应共享轴转接。
 
 Unified Drawer 统一承载节点属性、直接关系、来源、原始 JSON 和 Lint；Ledger 逐项检查只在 Plan 的顺序检查器中出现，不再为每种模式复制详情卡片或播放器。
 
-`spatial-0.1` 是 Projector 生成的确定性语义目录，包括 layer membership、三组 pairwise interface、所选 runtime instance，以及 canonical relation 的 `flow_kind / actual / animated`。它不保存坐标、相机或避让结果。五种模式和三个 Plan 视图都只是同一目录的不同投影，不是不同事实源。
+`spatial-0.2` 是 Projector 生成的确定性语义目录，包括唯一 `primary_layer`、三组 pairwise interface、所选 runtime overlay，以及 canonical relation 的 `from_layer / to_layer / flow_kind / runtime_touched / animated`。它不保存坐标、相机或避让结果。五种模式和两个 Plan 视图都只是同一目录的不同投影，不是不同事实源。
 
-空间图只绘制显式 canonical edge。`first_sequence` 只能用于稳定排序与布局，不能被解释成因果；移动粒子也只叠加在所选 Run 的显式关系上。历史图没有 runtime catalog 时，Execution membership、instance 和动态执行流保持为空，并显示缺失边界。
+空间图只绘制显式 canonical edge。`first_sequence` 只能用于稳定排序与布局，不能被解释成因果。Runtime snapshot 只表示当前 frontier，不能自动生成“真实走过”的动画；只有显式 execution telemetry 才能驱动有限的 Runtime Trace。历史图没有 runtime catalog 时，overlay 保持为空，并显示缺失边界。
 
 HTML 使用内嵌数据和原生 JavaScript，不依赖 CDN；JSON 和 Mermaid 用于审查与版本比较。
 
@@ -250,17 +249,23 @@ Projector 从同一份 canonical graph 与原始 Ledger 派生 `replay-0.1`。�
 ### 12.1 三层分离
 
 ```text
-Knowledge / Provenance Graph
-  Case、Evidence、Claim、Decision、Action、Verification
+State / Evidence Graph
+  Case、输入、Observation、Claim、Artifact、VerificationReceipt
                        |
-                       | 显式选择 runtime_managed 节点
+                       | supports / explains / feeds
                        v
-Control Graph
-  Run contains Step/Action/Verification + precedes/blocked_by/approved_by
+Control / Policy Graph
+  Goal、Decision、Run、Step、Approval、Policy、Verification + gates
                        |
-                       | next-actions / step-status
+                       | implements / invokes / targets
                        v
-Execution Overlay
+Action / Interface Graph
+  Actor、Agent、Capability、Skill、Tool、Target、Action
+                       |
+                       | produces / observes / verifies
+                       +---------------------------> State / Evidence
+
+Runtime Trace Overlay
   pending/ready/running/blocked/completed/failed + checkpoint event
 ```
 

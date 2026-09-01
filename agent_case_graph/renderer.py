@@ -264,9 +264,9 @@ h1 {
   border-radius: 15px;
   background: color-mix(in srgb, var(--layer-color) 4%, var(--surface));
 }
-.semantic-layer[data-semantic-layer="knowledge"] { --layer-color: var(--reason); }
+.semantic-layer[data-semantic-layer="state"] { --layer-color: var(--reason); }
 .semantic-layer[data-semantic-layer="control"] { --layer-color: var(--accent); }
-.semantic-layer[data-semantic-layer="execution"] { --layer-color: var(--execute); }
+.semantic-layer[data-semantic-layer="action"] { --layer-color: var(--execute); }
 .semantic-layer-head { position: relative; z-index: 4; display: grid; align-content: center; gap: 7px; padding: 14px; border-right: 1px solid color-mix(in srgb, var(--layer-color) 24%, var(--border)); background: color-mix(in srgb, var(--layer-color) 8%, var(--surface-raised)); }
 .semantic-layer-index { color: var(--layer-color); font: 760 10px/1 Consolas, monospace; letter-spacing: .08em; }
 .semantic-layer-title { font-size: 15px; font-weight: 780; }
@@ -498,6 +498,8 @@ button.plan-frontier-item:hover { border-color: var(--accent); }
 .spatial-edge.replay-future, .spatial-edge.replay-unrelated { opacity: .06 !important; }
 .spatial-edge.replay-past { opacity: .82 !important; }
 .spatial-edge.replay-current { stroke-width: 3.4; opacity: 1 !important; }
+.spatial-node-tether { fill: none; stroke-width: 1; stroke-dasharray: 2 4; opacity: .42; vector-effect: non-scaling-stroke; }
+.spatial-node-anchor { stroke: var(--canvas); stroke-width: 1.5; vector-effect: non-scaling-stroke; }
 .spatial-node {
   --node-color: var(--accent);
   position: absolute;
@@ -521,7 +523,6 @@ button.plan-frontier-item:hover { border-color: var(--accent); }
 .spatial-node.replay-future, .spatial-node.replay-unrelated { opacity: .10; }
 .spatial-node.replay-past { opacity: .72; }
 .spatial-node.replay-current { border-color: var(--node-color); box-shadow: 0 0 0 4px color-mix(in srgb, var(--node-color) 28%, transparent), 0 9px 24px rgba(25, 38, 57, .20); }
-.spatial-node.projection-copy { border-style: dashed; }
 .spatial-node.flow-node { width: 214px; max-width: 30vw; min-height: 68px; padding: 8px 9px; }
 .spatial-node-top { display: flex; align-items: center; justify-content: space-between; gap: 4px; color: var(--muted); font-size: 7.5px; font-weight: 760; }
 .spatial-node-title { display: -webkit-box; margin-top: 4px; overflow: hidden; font-size: 10px; font-weight: 700; line-height: 1.32; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
@@ -810,8 +811,7 @@ details.raw pre { overflow: auto; max-height: 340px; padding: 10px; border-radiu
         <select id="spatialRunFilter" class="filter-control"><option value="">最新 Run 快照</option></select>
         <select id="planViewSelect" class="filter-control" aria-label="规划视图" hidden>
           <option value="flow" data-spatial-mode="flow">依赖图</option>
-          <option value="orthogonal" data-spatial-mode="orthogonal">结构三面</option>
-          <option value="parallel" data-spatial-mode="parallel">三层投影</option>
+          <option value="orthogonal" data-spatial-mode="orthogonal">正交空间</option>
         </select>
         <select id="relationFilter" class="filter-control">
           <option value="story" selected>主线关系</option>
@@ -826,29 +826,29 @@ details.raw pre { overflow: auto; max-height: 340px; padding: 10px; border-radiu
     <div class="view active workspace-panel" id="overviewView" role="tabpanel" data-workspace-panel="overview">
       <div class="workspace-intro">
         <div>
-          <h2 data-i18n="overviewTitle">三层语义总览</h2>
-          <p data-i18n="overviewSubtitle">同一个 Case 中同时查看知识依据、计划控制与运行实例；层级是语义分工，不是固定生命周期。</p>
+          <h2 data-i18n="overviewTitle">三层闭环工作台</h2>
+          <p data-i18n="overviewSubtitle">状态证据提供上下文，控制策略选择下一步，行动接口改变环境；结果再回流为新证据。</p>
         </div>
-        <span class="workspace-kicker">K / C / E</span>
+        <span class="workspace-kicker">S / C / A + Trace</span>
       </div>
       <div class="workspace-content">
         <div class="relation-legend" aria-label="关系线型图例">
           <span class="relation-legend-item"><span class="relation-swatch temporal"></span><span data-i18n="legendTemporal">实线 · 计划前置约束</span></span>
           <span class="relation-legend-item"><span class="relation-swatch evidence"></span><span data-i18n="legendEvidence">虚线 · 证据与论证</span></span>
           <span class="relation-legend-item"><span class="relation-swatch execution"></span><span data-i18n="legendImplementation">点划线 · 决策落实</span></span>
-          <span class="relation-legend-item"><span class="relation-swatch mapping"></span><span data-i18n="legendMapping">点线 · Runtime 实例投影（非图关系）</span></span>
+          <span class="relation-legend-item"><span class="relation-swatch mapping"></span><span data-i18n="legendMapping">状态标记 · Runtime Trace 覆盖（非语义层）</span></span>
         </div>
         <div id="overviewBoundary" class="workspace-boundary"></div>
         <div class="semantic-stack-viewport">
           <div id="semanticStack" class="semantic-stack" data-telemetry="missing">
             <svg id="overviewRelations" class="overview-relations" aria-hidden="true"></svg>
-            <section class="semantic-layer" data-semantic-layer="knowledge">
+            <section class="semantic-layer" data-semantic-layer="state">
               <header class="semantic-layer-head">
-                <span class="semantic-layer-index">01 / K</span>
-                <span class="semantic-layer-title">Knowledge</span>
-                <span class="semantic-layer-note" data-i18n="knowledgeLayerNote">目标、观察、论断与验收依据</span>
+                <span class="semantic-layer-index">01 / S</span>
+                <span class="semantic-layer-title">State / Evidence</span>
+                <span class="semantic-layer-note" data-i18n="knowledgeLayerNote">输入、观察、证据、记忆与产物</span>
               </header>
-              <div id="knowledgeTrack" class="semantic-track"></div>
+              <div id="stateTrack" class="semantic-track"></div>
             </section>
             <section class="semantic-layer" data-semantic-layer="control">
               <header class="semantic-layer-head">
@@ -858,13 +858,13 @@ details.raw pre { overflow: auto; max-height: 340px; padding: 10px; border-radiu
               </header>
               <div id="controlTrack" class="semantic-track"></div>
             </section>
-            <section class="semantic-layer" data-semantic-layer="execution">
+            <section class="semantic-layer" data-semantic-layer="action">
               <header class="semantic-layer-head">
-                <span class="semantic-layer-index">03 / E</span>
-                <span class="semantic-layer-title">Execution</span>
-                <span class="semantic-layer-note" data-i18n="executionLayerNote">Run 实例状态；不等同于真实执行顺序</span>
+                <span class="semantic-layer-index">03 / A</span>
+                <span class="semantic-layer-title">Action / Interface</span>
+                <span class="semantic-layer-note" data-i18n="executionLayerNote">工具调用、代码执行、交接与外部操作</span>
               </header>
-              <div id="executionTrack" class="semantic-track"></div>
+              <div id="actionTrack" class="semantic-track"></div>
             </section>
           </div>
         </div>
@@ -906,7 +906,7 @@ details.raw pre { overflow: auto; max-height: 340px; padding: 10px; border-radiu
             <h2 id="spatialTitle">显式计划依赖</h2>
             <p id="spatialSubtitle">主画布只显示 Run 的任务节点与 precedes 约束；位置不代表真实执行顺序或耗时。</p>
           </div>
-          <span class="spatial-protocol">spatial-0.1</span>
+          <span class="spatial-protocol">spatial-0.2</span>
         </div>
         <div id="planSummary" class="plan-summary" aria-label="规划摘要"></div>
         <div id="planWorkbench" class="plan-workbench" data-plan-view="flow">
@@ -923,11 +923,11 @@ details.raw pre { overflow: auto; max-height: 340px; padding: 10px; border-radiu
           <div id="spatialMeaningHud" class="spatial-hud spatial-hud-left">
             <div id="spatialLoopCard" class="spatial-card">
               <div class="spatial-loop" aria-label="信息闭环">
-                <span data-i18n="loopKnowledge">Knowledge 知识</span><span class="spatial-loop-arrow">→</span>
-                <span data-i18n="loopControl">Control 决策</span><span class="spatial-loop-arrow">→</span>
-                <span data-i18n="loopExecution">Execution 执行</span>
+                <span data-i18n="loopKnowledge">State 状态</span><span class="spatial-loop-arrow">→</span>
+                <span data-i18n="loopControl">Control 控制</span><span class="spatial-loop-arrow">→</span>
+                <span data-i18n="loopExecution">Action 行动</span>
               </div>
-              <div class="spatial-loop-sub" data-i18n="loopHint">执行结果再回到 Knowledge。只有重放中的当前显式关系会产生一次有限流动。</div>
+              <div class="spatial-loop-sub" data-i18n="loopHint">行动结果回流为新的 State / Evidence；Runtime Trace 只覆盖实际经过的节点和关系。</div>
               <div id="spatialLayerSummary" class="spatial-layer-summary"></div>
             </div>
             <div id="flowLegendCard" class="spatial-card">
@@ -939,9 +939,9 @@ details.raw pre { overflow: auto; max-height: 340px; padding: 10px; border-radiu
           <div id="spatialLayerHud" class="spatial-hud spatial-hud-right">
             <div class="spatial-card spatial-layer-buttons" aria-label="空间投影层">
               <button class="spatial-layer-button active" type="button" data-spatial-layer="all" data-i18n="layerAll">全部</button>
-              <button class="spatial-layer-button" type="button" data-spatial-layer="knowledge">Knowledge</button>
+              <button class="spatial-layer-button" type="button" data-spatial-layer="state">State</button>
               <button class="spatial-layer-button" type="button" data-spatial-layer="control">Control</button>
-              <button class="spatial-layer-button" type="button" data-spatial-layer="execution">Execution</button>
+              <button class="spatial-layer-button" type="button" data-spatial-layer="action">Action</button>
             </div>
           </div>
 
@@ -1082,28 +1082,27 @@ const UI = {
     tabReview: "复盘",
     tabEvidence: "证据",
     planViewFlow: "依赖主图",
-    planViewOrthogonal: "辅助 · 结构三面",
-    planViewParallel: "辅助 · 三层投影",
-    overviewTitle: "三层语义总览",
-    overviewSubtitle: "同一个 Case 中同时查看知识依据、计划控制与运行实例；层级是语义分工，不是固定生命周期。",
+    planViewOrthogonal: "辅助 · 正交空间",
+    overviewTitle: "三层闭环工作台",
+    overviewSubtitle: "状态证据提供上下文，控制策略选择下一步，行动接口改变环境；结果再回流为新证据。",
     runTitle: "运行前沿",
     runSubtitle: "按 Runtime 状态查看可执行、运行中、阻塞、完成与失败的实例，不把状态快照冒充执行轨迹。",
     reviewTitle: "复盘结论与缺口",
     reviewSubtitle: "汇总记录完整性、当前计划状态与证据缺口；逐项检查统一进入规划回放。",
     evidenceTitle: "证据与决策路径",
     evidenceSubtitle: "只展示图中明确记录的 supports、explains、implemented_by 与 checks 关系。",
-    knowledgeLayerNote: "目标、观察、论断与验收依据",
+    knowledgeLayerNote: "输入、观察、证据、记忆与产物",
     controlLayerNote: "决策、显式依赖、门禁与验证",
-    executionLayerNote: "Run 实例状态；不等同于真实执行顺序",
+    executionLayerNote: "工具调用、代码执行、交接与外部操作",
     legendTemporal: "实线 · 计划前置约束",
     legendEvidence: "虚线 · 证据与论证",
     legendImplementation: "点划线 · 决策落实",
-    legendMapping: "点线 · Runtime 实例投影（非图关系）",
-    overviewTelemetryMissing: "Runtime 状态快照可用，但没有已观测执行遥测；Execution 层显示实例状态，不能证明真实执行顺序、交接或耗时，也不会播放流动动画。",
-    overviewTelemetryPresent: "已提供显式执行遥测；仅当前真实执行关系可使用一次有限流动提示。",
+    legendMapping: "状态标记 · Runtime Trace 覆盖（非语义层）",
+    overviewTelemetryMissing: "三层语义结构可用；当前只有 Runtime 状态快照，没有完整执行遥测。状态标记不证明真实顺序、交接或耗时。",
+    overviewTelemetryPresent: "三层语义结构叠加了显式执行遥测；仅当前真实关系使用一次有限流动提示。",
     runtimeInstance: "Run 实例",
     runtimeProjection: "实例投影",
-    runtimeGap: "等待 VerificationReceipt / Observation 回流；当前没有可证明的 Execution → Knowledge 关系。",
+    runtimeGap: "等待 VerificationReceipt / Observation 回流；当前没有可证明的 Action → State 反馈关系。",
     runBoundaryMissing: "当前只有 Runtime 推导状态快照，没有完整已观测执行 trace。状态列表示此刻的 frontier，不表示时间线。",
     runBoundaryPresent: "当前 Run 存在已观测执行遥测；状态列仍只表示当前 frontier。",
     laneReady: "可执行",
@@ -1135,15 +1134,13 @@ const UI = {
     flowTitle: "显式计划依赖",
     flowSubtitle: "主画布只显示 Run 的任务节点与 precedes 约束；依赖层级不代表真实执行顺序或耗时。",
     orthogonalTitle: "三张正交语义面",
-    orthogonalSubtitle: "第一卦限三面角：XY 是 Knowledge，XZ 是 Control，YZ 是 Execution；三条正向共享轴就是层间接口。",
-    parallelTitle: "三张平行工作层",
-    parallelSubtitle: "Knowledge、Control、Execution 分层排布，跨层箭头显示信息实际去向。",
+    orthogonalSubtitle: "第一卦限三面角：XY 是 State / Evidence，XZ 是 Control / Policy，YZ 是 Action / Interface；节点严格落面，跨面关系经共享轴路由。",
     latestRun: "最新 Run 快照",
     layerAll: "全部",
-    loopKnowledge: "Knowledge 知识",
-    loopControl: "Control 决策",
-    loopExecution: "Execution 执行",
-    loopHint: "执行结果再回到 Knowledge。只有重放中的当前显式关系会产生一次有限流动。",
+    loopKnowledge: "State 状态",
+    loopControl: "Control 控制",
+    loopExecution: "Action 行动",
+    loopHint: "行动结果回流为新的 State / Evidence；Runtime Trace 只覆盖实际经过的节点和关系。",
     flowRank: "依赖层级 {rank}",
     flowRunScope: "Run 范围 · {run}",
     flowCycleWarning: "检测到 precedes 依赖环；已停止生成顺序层级。",
@@ -1232,7 +1229,7 @@ const UI = {
     qualityButton: "质量",
     qualityTitle: "质量检查",
     spatialNoData: "当前筛选没有可展示的节点",
-    executionNoRuntime: "此图没有真实 Execution runtime 覆盖",
+    executionNoRuntime: "此图没有已观测 Runtime Trace 覆盖",
     resetCamera: "重置视角",
     rotateLeft: "向左旋转",
     rotateRight: "向右旋转",
@@ -1271,28 +1268,27 @@ const UI = {
     tabReview: "Review",
     tabEvidence: "Evidence",
     planViewFlow: "Primary dependency graph",
-    planViewOrthogonal: "Aux · structural planes",
-    planViewParallel: "Aux · layer projection",
-    overviewTitle: "Three-layer semantic overview",
-    overviewSubtitle: "Inspect knowledge grounds, plan control, and runtime instances in one Case; layers are semantic roles, not fixed lifecycle stages.",
+    planViewOrthogonal: "Aux · orthogonal space",
+    overviewTitle: "Three-layer closed-loop workbench",
+    overviewSubtitle: "State and evidence provide context, control and policy select the next step, and actions change the environment before results return as evidence.",
     runTitle: "Runtime frontier",
     runSubtitle: "Inspect ready, running, blocked, completed, and failed instances without presenting a state snapshot as an execution trace.",
     reviewTitle: "Review conclusions and gaps",
     reviewSubtitle: "Summarize record completeness, current plan state, and evidence gaps; use Plan replay for item-by-item inspection.",
     evidenceTitle: "Evidence and decision paths",
     evidenceSubtitle: "Only explicitly recorded supports, explains, implemented_by, and checks relations are shown.",
-    knowledgeLayerNote: "Goals, observations, claims, and acceptance grounds",
+    knowledgeLayerNote: "Inputs, observations, evidence, memory, and artifacts",
     controlLayerNote: "Decisions, explicit dependencies, gates, and verification",
-    executionLayerNote: "Run instance state; not an actual execution order",
+    executionLayerNote: "Tool calls, code execution, handoffs, and external effects",
     legendTemporal: "Solid · planned prerequisite",
     legendEvidence: "Dashed · evidence and reasoning",
     legendImplementation: "Dash-dot · decision implementation",
-    legendMapping: "Dotted · Runtime instance projection (not a graph edge)",
-    overviewTelemetryMissing: "A Runtime state snapshot is available, but observed execution telemetry is not. Execution shows instance state and cannot prove order, handoff, or duration; no flow animation is played.",
-    overviewTelemetryPresent: "Explicit execution telemetry is available; only the current real execution relation may receive one finite motion cue.",
+    legendMapping: "Status marker · Runtime Trace overlay (not a semantic layer)",
+    overviewTelemetryMissing: "The three semantic layers are available, but only a Runtime state snapshot is present. Status markers do not prove real order, handoff, or duration.",
+    overviewTelemetryPresent: "Explicit execution telemetry is overlaid on the three semantic layers; only the current real relation receives one finite motion cue.",
     runtimeInstance: "Run instance",
     runtimeProjection: "instance projection",
-    runtimeGap: "Waiting for VerificationReceipt / Observation feedback; no provable Execution → Knowledge relation is available.",
+    runtimeGap: "Waiting for VerificationReceipt / Observation feedback; no provable Action → State feedback relation is available.",
     runBoundaryMissing: "Only an inferred Runtime state snapshot is available, not a complete observed execution trace. Lanes represent the current frontier, not a timeline.",
     runBoundaryPresent: "Observed execution telemetry is available for this Run; lanes still represent only the current frontier.",
     laneReady: "Ready",
@@ -1324,15 +1320,13 @@ const UI = {
     flowTitle: "Explicit plan dependencies",
     flowSubtitle: "The primary canvas shows only Run task nodes and precedes constraints; dependency levels do not claim actual execution order or duration.",
     orthogonalTitle: "Three orthogonal semantic planes",
-    orthogonalSubtitle: "Positive-octant trihedral view: XY is Knowledge, XZ is Control, and YZ is Execution; positive shared axes are layer interfaces.",
-    parallelTitle: "Three parallel work layers",
-    parallelSubtitle: "Knowledge, Control, and Execution are separated while cross-layer arrows show actual destinations.",
+    orthogonalSubtitle: "Positive-octant trihedral view: XY is State / Evidence, XZ is Control / Policy, and YZ is Action / Interface. Nodes stay on one plane and cross-plane relations route through shared axes.",
     latestRun: "Latest Run snapshot",
     layerAll: "All",
-    loopKnowledge: "Knowledge",
+    loopKnowledge: "State",
     loopControl: "Control",
-    loopExecution: "Execution",
-    loopHint: "Execution results return to Knowledge. Only the current explicit replay transition receives one finite motion cue.",
+    loopExecution: "Action",
+    loopHint: "Action results return as State / Evidence. Runtime Trace only overlays observed nodes and relations.",
     flowRank: "Dependency level {rank}",
     flowRunScope: "Run scope · {run}",
     flowCycleWarning: "A precedes dependency cycle was detected; ordered levels are disabled.",
@@ -1421,7 +1415,7 @@ const UI = {
     qualityButton: "Quality",
     qualityTitle: "Quality checks",
     spatialNoData: "No node matches the current filters",
-    executionNoRuntime: "This graph has no real Execution runtime overlay",
+    executionNoRuntime: "This graph has no observed Runtime Trace overlay",
     resetCamera: "Reset camera",
     rotateLeft: "Rotate left",
     rotateRight: "Rotate right",
@@ -1607,12 +1601,12 @@ function createText(tag, className, text) {
   return element;
 }
 const SPATIAL_LAYER_COLORS = {
-  knowledge: "var(--reason)", control: "var(--accent)", execution: "var(--execute)"
+  state: "var(--reason)", control: "var(--accent)", action: "var(--execute)"
 };
 const SPATIAL_FLOW_COLORS = {
-  knowledge: "var(--reason)", control: "var(--accent)", execution: "var(--execute)",
-  "knowledge-control": "var(--scope)", "control-execution": "var(--evidence)",
-  "execution-knowledge": "var(--knowledge)"
+  state: "var(--reason)", control: "var(--accent)", action: "var(--execute)",
+  "state-control": "var(--scope)", "control-action": "var(--evidence)",
+  "action-state": "var(--knowledge)"
 };
 const FLOW_ORDER_EDGE_TYPES = new Set(["precedes"]);
 const FLOW_TASK_NODE_TYPES = new Set(["Step", "Action", "Verification"]);
@@ -1625,11 +1619,11 @@ const RELATION_FAMILIES = {
 };
 
 function fallbackSpatialMembership(node) {
-  const controlTypes = new Set(["Run", "Step", "Capability", "Agent", "Skill", "Tool", "Target", "Action", "Approval", "Policy", "Verification"]);
-  const result = [];
-  if (node.type !== "Run" && node.type !== "Step") result.push("knowledge");
-  if (controlTypes.has(node.type)) result.push("control");
-  return result.length ? result : ["knowledge"];
+  const controlTypes = new Set(["Run", "Step", "Goal", "AcceptanceCriterion", "Decision", "Approval", "Policy", "Verification"]);
+  const actionTypes = new Set(["Actor", "Capability", "Agent", "Skill", "Tool", "Target", "Action"]);
+  if (controlTypes.has(node.type)) return ["control"];
+  if (actionTypes.has(node.type)) return ["action"];
+  return ["state"];
 }
 function spatialCatalogNodes() {
   return graph.spatial && Array.isArray(graph.spatial.nodes) ? graph.spatial.nodes : graph.nodes;
@@ -1640,7 +1634,7 @@ function spatialCatalogRelations() {
 function canonicalMembership(node) {
   const spatialNode = spatialCatalogNodes().find(function (item) { return item.id === node.id; });
   const membership = spatialNode && (spatialNode.canonical_membership || spatialNode.membership);
-  return Array.isArray(membership) && membership.length ? membership.filter(function (layer) { return layer !== "execution"; }) : fallbackSpatialMembership(node);
+  return Array.isArray(membership) && membership.length ? membership.filter(function (layer) { return ["state", "control", "action"].includes(layer); }).slice(0, 1) : fallbackSpatialMembership(node);
 }
 function spatialRunCandidates() {
   const result = [];
@@ -2023,9 +2017,7 @@ function runtimeEntryMap(snapshot) {
   return result;
 }
 function effectiveMembership(node, runtimeMap) {
-  const result = canonicalMembership(node).slice();
-  if (runtimeMap.has(node.id)) result.push("execution");
-  return ["knowledge", "control", "execution"].filter(function (layer) { return result.includes(layer); });
+  return canonicalMembership(node).slice(0, 1);
 }
 function caseContextNodes(snapshot) {
   if (!snapshot || !snapshot.run_id) return graph.nodes.slice();
@@ -2068,44 +2060,28 @@ function relationBetween(fromId, toId, allowedTypes) {
     return relation.from === fromId && relation.to === toId && (!allowedTypes || allowedTypes.includes(relation.type));
   }) || null;
 }
-function semanticCanonicalCard(node, layer, column) {
+function semanticCanonicalCard(node, layer, column, runtimeMap) {
   if (!node) return null;
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "semantic-card";
+  const runtimeEntry = runtimeMap && runtimeMap.get(node.id);
+  button.className = "semantic-card" + (runtimeEntry ? " runtime-instance " + runtimeEntry.runtime_lane : "");
   button.dataset.entityKind = "canonical";
   button.dataset.nodeId = node.id;
   button.style.gridColumn = String(column + 1);
   button.style.setProperty("--card-color", SPATIAL_LAYER_COLORS[layer] || "var(--accent)");
-  const status = node.attrs && node.attrs.status ? statusLabel(node.attrs.status) : "canonical";
+  const status = runtimeEntry ? statusLabel(runtimeEntry.runtime_lane) : node.attrs && node.attrs.status ? statusLabel(node.attrs.status) : "canonical";
   const kind = createText("div", "semantic-card-kind", "");
   kind.append(createText("span", "", nodeTypeLabel(node.type)), createText("span", "", status));
   button.append(kind, createText("div", "semantic-card-title", localizedNodeLabel(node)));
-  button.appendChild(createText("div", "semantic-card-detail", node.id));
+  const details = [node.id];
+  if (runtimeEntry) {
+    button.dataset.traceStatus = runtimeEntry.runtime_lane;
+    details.push("Trace · " + statusLabel(runtimeEntry.runtime_lane));
+  }
+  button.appendChild(createText("div", "semantic-card-detail", details.join(" · ")));
   button.title = node.id;
   button.addEventListener("click", function () { selectNode(node.id); });
-  return button;
-}
-function runtimeInstanceCard(snapshot, entry, column) {
-  const sourceId = entry.id || entry.node_id;
-  const node = nodeById.get(sourceId);
-  const lane = entry.runtime_lane || entry.status || "unknown";
-  const button = document.createElement("button");
-  button.type = "button";
-  button.className = "semantic-card runtime-instance " + lane;
-  button.dataset.entityKind = "runtime-instance";
-  button.dataset.instanceId = (snapshot && snapshot.run_id ? snapshot.run_id : "run") + "::" + sourceId;
-  button.dataset.sourceNodeId = sourceId;
-  if (column != null) button.style.gridColumn = String(column + 1);
-  const kind = createText("div", "semantic-card-kind", "");
-  kind.append(createText("span", "", message("runtimeInstance")), createText("span", "", statusLabel(lane)));
-  button.append(kind, createText("div", "semantic-card-title", node ? localizedNodeLabel(node) : (entry.label || sourceId)));
-  const details = [button.dataset.instanceId];
-  if (entry.executor) details.push(entry.executor);
-  if (entry.blockers && entry.blockers[0] && entry.blockers[0].message) details.push(entry.blockers[0].message);
-  button.appendChild(createText("div", "semantic-card-detail", details.join(" · ")));
-  button.title = button.dataset.instanceId;
-  button.addEventListener("click", function () { if (node) selectNode(sourceId); });
   return button;
 }
 function appendWorkspaceBoundary(target, textValue) {
@@ -2114,9 +2090,6 @@ function appendWorkspaceBoundary(target, textValue) {
 }
 function overviewElementByNode(stack, nodeId) {
   return Array.from(stack.querySelectorAll("[data-entity-kind='canonical']")).find(function (element) { return element.dataset.nodeId === nodeId; }) || null;
-}
-function overviewElementByInstance(stack, nodeId) {
-  return Array.from(stack.querySelectorAll("[data-entity-kind='runtime-instance']")).find(function (element) { return element.dataset.sourceNodeId === nodeId; }) || null;
 }
 function renderOverviewRelations() {
   const stack = document.getElementById("semanticStack");
@@ -2133,7 +2106,7 @@ function renderOverviewRelations() {
   defs.appendChild(marker);
   svg.appendChild(defs);
   const planned = spatialCatalogRelations().filter(function (relation) {
-    return ["supports", "explains", "implemented_by", "precedes", "checks"].includes(relation.type);
+    return ["targets", "supports", "explains", "implemented_by", "precedes", "produces", "approved_by", "guarded_by", "modifies", "uses", "invokes", "checks", "verified_by"].includes(relation.type);
   });
   function relativeBox(element) {
     const box = element.getBoundingClientRect();
@@ -2153,15 +2126,16 @@ function renderOverviewRelations() {
       labelX = (from.right + to.left) / 2;
       labelY = channel - 4;
     } else if (sameLayer) {
-      pathText = "M " + from.right + " " + from.cy + " C " + (from.right + 18) + " " + from.cy + ", " + (to.left - 18) + " " + to.cy + ", " + to.left + " " + to.cy;
-      labelX = (from.right + to.left) / 2;
+      const midX = (from.right + to.left) / 2;
+      pathText = "M " + from.right + " " + from.cy + " L " + midX + " " + from.cy + " L " + midX + " " + to.cy + " L " + to.left + " " + to.cy;
+      labelX = midX;
       labelY = (from.cy + to.cy) / 2 - 5;
     } else {
       const downward = to.cy > from.cy;
       const startY = downward ? from.bottom : from.top;
       const endY = downward ? to.top : to.bottom;
       const midY = (startY + endY) / 2;
-      pathText = "M " + from.cx + " " + startY + " C " + from.cx + " " + midY + ", " + to.cx + " " + midY + ", " + to.cx + " " + endY;
+      pathText = "M " + from.cx + " " + startY + " L " + from.cx + " " + midY + " L " + to.cx + " " + midY + " L " + to.cx + " " + endY;
       labelX = (from.cx + to.cx) / 2 + 5;
       labelY = midY - 4;
     }
@@ -2177,39 +2151,28 @@ function renderOverviewRelations() {
   planned.forEach(function (relation, index) {
     appendPath(overviewElementByNode(stack, relation.from), overviewElementByNode(stack, relation.to), relationFamily(relation.type), edgeTypeLabel(relation.type), relation.id, index);
   });
-  Array.from(stack.querySelectorAll("[data-entity-kind='canonical']")).filter(function (element) {
-    const node = nodeById.get(element.dataset.nodeId);
-    return node && ["Step", "Action", "Verification"].includes(node.type);
-  }).forEach(function (canonical, index) {
-    appendPath(canonical, overviewElementByInstance(stack, canonical.dataset.nodeId), "mapping", message("runtimeProjection"), null, index);
-  });
 }
 function renderWorkspaceOverview(snapshot, runtimeMap) {
   const nodes = caseContextNodes(snapshot);
-  const knowledgeTrack = document.getElementById("knowledgeTrack");
+  const stateTrack = document.getElementById("stateTrack");
   const controlTrack = document.getElementById("controlTrack");
-  const executionTrack = document.getElementById("executionTrack");
-  [knowledgeTrack, controlTrack, executionTrack].forEach(clearElement);
-  const knowledgeColumns = {Goal: 0, Artifact: 1, Observation: 1, Claim: 2, RootCause: 2, Uncertainty: 2, AcceptanceCriterion: 4};
-  const controlColumns = {Step: 0, ScopeBoundary: 1, Decision: 2, Approval: 2, Policy: 2, Action: 3, Verification: 4};
-  nodes.forEach(function (node) {
-    if (Object.prototype.hasOwnProperty.call(knowledgeColumns, node.type)) {
-      const card = semanticCanonicalCard(node, "knowledge", knowledgeColumns[node.type]);
-      if (card) knowledgeTrack.appendChild(card);
-    }
-    if (Object.prototype.hasOwnProperty.call(controlColumns, node.type)) {
-      const card = semanticCanonicalCard(node, "control", controlColumns[node.type]);
-      if (card) controlTrack.appendChild(card);
-    }
+  const actionTrack = document.getElementById("actionTrack");
+  [stateTrack, controlTrack, actionTrack].forEach(clearElement);
+  const tracks = {state: stateTrack, control: controlTrack, action: actionTrack};
+  const counters = {state: 0, control: 0, action: 0};
+  nodes.slice().sort(function (left, right) {
+    return (left.first_sequence || 0) - (right.first_sequence || 0) || left.id.localeCompare(right.id);
+  }).forEach(function (node) {
+    const layer = canonicalMembership(node)[0] || "state";
+    const card = semanticCanonicalCard(node, layer, counters[layer] % 5, runtimeMap);
+    counters[layer] += 1;
+    if (card && tracks[layer]) tracks[layer].appendChild(card);
   });
-  const columnByType = {Step: 0, Action: 3, Verification: 4};
-  Array.from(runtimeMap.values()).slice().sort(function (left, right) { return (left.first_sequence || 0) - (right.first_sequence || 0); }).forEach(function (entry, index) {
-    const source = nodeById.get(entry.id || entry.node_id);
-    executionTrack.appendChild(runtimeInstanceCard(snapshot, entry, source && Object.prototype.hasOwnProperty.call(columnByType, source.type) ? columnByType[source.type] : Math.min(4, index)));
-  });
-  const gap = createText("div", "telemetry-gap", message("runtimeGap"));
-  gap.dataset.telemetryGap = "execution-feedback";
-  executionTrack.appendChild(gap);
+  if (!nodes.some(function (node) { return canonicalMembership(node)[0] === "action"; })) {
+    const gap = createText("div", "telemetry-gap", message("runtimeGap"));
+    gap.dataset.telemetryGap = "action-feedback";
+    actionTrack.appendChild(gap);
+  }
   const observed = hasObservedExecutionTrack(snapshot);
   document.getElementById("semanticStack").dataset.telemetry = observed ? "observed" : "missing";
   appendWorkspaceBoundary(document.getElementById("overviewBoundary"), message(observed ? "overviewTelemetryPresent" : "overviewTelemetryMissing"));
@@ -2317,7 +2280,7 @@ function renderPlanWorkbench(snapshot, runtimeMap) {
   appendFocusSection("planBlockerTitle", blockedEntry, "planNoBlocker", "blocked");
 }
 function evidenceChainCard(node) {
-  const card = semanticCanonicalCard(node, node && ["Observation", "Claim", "Goal", "AcceptanceCriterion"].includes(node.type) ? "knowledge" : "control", 0);
+  const card = semanticCanonicalCard(node, node ? (canonicalMembership(node)[0] || "state") : "control", 0);
   if (card) card.style.gridColumn = "";
   return card;
 }
@@ -2450,26 +2413,6 @@ function selectedRunScope(snapshot) {
   ordered.forEach(function (node) { if (kept.length < displayLimit && !mandatory.has(node.id)) kept.push(node); });
   return kept;
 }
-function positiveAxisPositions(count, size) {
-  if (!count) return [];
-  const usable = Math.max(1, size - ORTHOGONAL_INSET * 2);
-  return Array.from({length: count}, function (_, index) {
-    return ORTHOGONAL_INSET + (index + 1) * usable / (count + 1);
-  });
-}
-function gridPositions(count, width, height) {
-  if (!count) return [];
-  const columns = Math.max(1, Math.ceil(Math.sqrt(count * 1.45)));
-  const rows = Math.ceil(count / columns);
-  return Array.from({length: count}, function (_, index) {
-    const column = index % columns;
-    const row = Math.floor(index / columns);
-    return {
-      u: columns === 1 ? 0 : -width / 2 + column * width / (columns - 1),
-      v: rows === 1 ? 0 : -height / 2 + row * height / (rows - 1)
-    };
-  });
-}
 function positiveGridPositions(count, size) {
   if (!count) return [];
   const columns = Math.max(1, Math.ceil(Math.sqrt(count * 1.45)));
@@ -2485,71 +2428,23 @@ function positiveGridPositions(count, size) {
   });
 }
 function buildOrthogonalInstances(nodes, runtimeMap) {
-  if (spatialLayer !== "all") {
-    const positions = positiveGridPositions(nodes.length, ORTHOGONAL_SIZE);
-    return nodes.map(function (node, index) {
-      const p = positions[index];
-      const point = spatialLayer === "knowledge" ? {x: p.u, y: p.v, z: 0}
-        : spatialLayer === "control" ? {x: p.u, y: 0, z: p.v}
-        : {x: 0, y: p.u, z: p.v};
-      return {key: node.id + "::" + spatialLayer, sourceId: node.id, node: node, layers: [spatialLayer], point: point};
-    });
-  }
-  const buckets = {knowledge: [], control: [], execution: [], "knowledge-control": [], "control-execution": [], "execution-knowledge": [], origin: []};
-  const knowledgeControlTypes = new Set(["Goal", "Decision", "AcceptanceCriterion", "Policy"]);
-  const controlExecutionTypes = new Set(["Step", "Action", "Tool", "Approval", "Target", "Verification"]);
-  const executionKnowledgeTypes = new Set(["Artifact", "Observation", "VerificationReceipt"]);
+  const buckets = {state: [], control: [], action: []};
   nodes.forEach(function (node) {
-    const membership = effectiveMembership(node, runtimeMap);
-    let bucket = "knowledge";
-    if (node.id === graph.root_id) bucket = "origin";
-    else if (knowledgeControlTypes.has(node.type) && membership.includes("knowledge") && membership.includes("control")) bucket = "knowledge-control";
-    else if (runtimeMap.has(node.id) && controlExecutionTypes.has(node.type)) bucket = "control-execution";
-    else if (runtimeMap.has(node.id) && executionKnowledgeTypes.has(node.type)) bucket = "execution-knowledge";
-    else if (runtimeMap.has(node.id)) bucket = "execution";
-    else if (membership.includes("control")) bucket = "control";
-    buckets[bucket].push({node: node, membership: membership});
+    const layer = effectiveMembership(node, runtimeMap)[0] || "state";
+    buckets[layer].push(node);
   });
   const result = [];
-  ["knowledge", "control", "execution"].forEach(function (layer) {
+  ["state", "control", "action"].forEach(function (layer) {
+    buckets[layer].sort(function (left, right) {
+      return (left.first_sequence || 0) - (right.first_sequence || 0) || left.id.localeCompare(right.id);
+    });
     const positions = positiveGridPositions(buckets[layer].length, ORTHOGONAL_SIZE);
-    buckets[layer].forEach(function (item, index) {
+    buckets[layer].forEach(function (node, index) {
       const p = positions[index];
-      const point = layer === "knowledge" ? {x: p.u, y: p.v, z: 0}
+      const point = layer === "state" ? {x: p.u, y: p.v, z: 0}
         : layer === "control" ? {x: p.u, y: 0, z: p.v}
         : {x: 0, y: p.u, z: p.v};
-      result.push({key: item.node.id + "::" + layer, sourceId: item.node.id, node: item.node, layers: item.membership, displayLayer: layer, point: point});
-    });
-  });
-  [["knowledge-control", "x"], ["control-execution", "z"], ["execution-knowledge", "y"]].forEach(function (entry) {
-    const bucket = buckets[entry[0]];
-    const values = positiveAxisPositions(bucket.length, ORTHOGONAL_SIZE);
-    bucket.forEach(function (item, index) {
-      const point = {x: 0, y: 0, z: 0};
-      point[entry[1]] = values[index];
-      result.push({key: item.node.id + "::" + entry[0], sourceId: item.node.id, node: item.node, layers: item.membership, displayLayer: entry[0], point: point});
-    });
-  });
-  buckets.origin.forEach(function (item) {
-    result.push({key: item.node.id + "::origin", sourceId: item.node.id, node: item.node, layers: item.membership, displayLayer: "origin", point: {x: 0, y: 0, z: 0}});
-  });
-  return result;
-}
-function buildParallelInstances(nodes, runtimeMap) {
-  const byLayer = {knowledge: [], control: [], execution: []};
-  nodes.forEach(function (node) {
-    effectiveMembership(node, runtimeMap).forEach(function (layer) { byLayer[layer].push(node); });
-  });
-  const zByLayer = {knowledge: -290, control: 0, execution: 290};
-  const result = [];
-  Object.keys(byLayer).forEach(function (layer) {
-    const positions = gridPositions(byLayer[layer].length, 500, 330);
-    byLayer[layer].forEach(function (node, index) {
-      result.push({
-        key: node.id + "::" + layer, sourceId: node.id, node: node, layers: [layer],
-        point: {x: positions[index].u, y: positions[index].v, z: zByLayer[layer]},
-        projectionCopy: effectiveMembership(node, runtimeMap).length > 1
-      });
+      result.push({key: node.id + "::" + layer, sourceId: node.id, node: node, layers: [layer], displayLayer: layer, point: point});
     });
   });
   return result;
@@ -2734,9 +2629,9 @@ function buildRelationLaneOffsets(relations) {
 function spatialSceneCenter() {
   if (spatialMode !== "orthogonal") return {x: 0, y: 0, z: 0};
   const half = ORTHOGONAL_SIZE / 2;
-  if (spatialLayer === "knowledge") return {x: half, y: half, z: 0};
+  if (spatialLayer === "state") return {x: half, y: half, z: 0};
   if (spatialLayer === "control") return {x: half, y: 0, z: half};
-  if (spatialLayer === "execution") return {x: 0, y: half, z: half};
+  if (spatialLayer === "action") return {x: 0, y: half, z: half};
   const trihedralCenter = ORTHOGONAL_SIZE / 3;
   return {x: trihedralCenter, y: trihedralCenter, z: trihedralCenter};
 }
@@ -2756,33 +2651,38 @@ function projectSpatialPoint(point, width, height) {
   const baseScale = Math.min(width / 1040, height / 720) * spatialCamera.scale;
   return {x: width / 2 + x1 * baseScale, y: height / 2 - y1 * baseScale + 18, depth: depth};
 }
-function relaxSpatialLabels(projected, instances, width, height) {
-  for (let pass = 0; pass < 42; pass += 1) {
+function spatialLabelPositions(projected, instances, width, height) {
+  const labels = new Map(instances.map(function (instance) {
+    const anchor = projected.get(instance.key);
+    return [instance.key, {x: anchor.x, y: anchor.y, depth: anchor.depth}];
+  }));
+  for (let pass = 0; pass < 64; pass += 1) {
     for (let leftIndex = 0; leftIndex < instances.length; leftIndex += 1) {
-      const left = projected.get(instances[leftIndex].key);
+      const left = labels.get(instances[leftIndex].key);
       for (let rightIndex = leftIndex + 1; rightIndex < instances.length; rightIndex += 1) {
-        const right = projected.get(instances[rightIndex].key);
+        const right = labels.get(instances[rightIndex].key);
         const dx = right.x - left.x;
         const dy = right.y - left.y;
-        if (Math.abs(dx) >= 142 || Math.abs(dy) >= 66) continue;
-        const direction = dy === 0 ? (rightIndex % 2 ? 1 : -1) : Math.sign(dy);
-        const push = (66 - Math.abs(dy)) / 2 + .8;
-        left.y -= direction * push;
-        right.y += direction * push;
-        const horizontalPush = (142 - Math.abs(dx)) * .05;
-        const horizontalDirection = dx === 0 ? (rightIndex % 2 ? 1 : -1) : Math.sign(dx);
-        left.x -= horizontalDirection * horizontalPush;
-        right.x += horizontalDirection * horizontalPush;
+        if (Math.abs(dx) >= 146 || Math.abs(dy) >= 62) continue;
+        const yDirection = dy === 0 ? (rightIndex % 2 ? 1 : -1) : Math.sign(dy);
+        const yPush = (62 - Math.abs(dy)) / 2 + .8;
+        left.y -= yDirection * yPush;
+        right.y += yDirection * yPush;
+        const xDirection = dx === 0 ? (rightIndex % 2 ? 1 : -1) : Math.sign(dx);
+        const xPush = (146 - Math.abs(dx)) * .08;
+        left.x -= xDirection * xPush;
+        right.x += xDirection * xPush;
       }
     }
     instances.forEach(function (instance) {
-      const point = projected.get(instance.key);
-      point.x = Math.max(76, Math.min(width - 76, point.x));
-      point.y = Math.max(32, Math.min(height - 34, point.y));
-      if (point.x < 360 && point.y < 118) point.y = 128;
-      if (point.x > width - 130 && point.y < 175) point.y = 185;
+      const point = labels.get(instance.key);
+      point.x = Math.max(72, Math.min(width - 72, point.x));
+      point.y = Math.max(28, Math.min(height - 30, point.y));
+      if (point.x < 370 && point.y < 122) point.y = 132;
+      if (point.x > width - 132 && point.y < 174) point.y = 184;
     });
   }
+  return labels;
 }
 function svgElement(name, attrs) {
   const element = document.createElementNS("http://www.w3.org/2000/svg", name);
@@ -2790,18 +2690,11 @@ function svgElement(name, attrs) {
   return element;
 }
 function spatialPlaneDefinitions() {
-  const size = spatialMode === "orthogonal" ? ORTHOGONAL_SIZE : 315;
-  if (spatialMode === "parallel") {
-    return [
-      {layer: "knowledge", label: "Knowledge", points: [{x:-size,y:-size,z:-290},{x:size,y:-size,z:-290},{x:size,y:size,z:-290},{x:-size,y:size,z:-290}]},
-      {layer: "control", label: "Control", points: [{x:-size,y:-size,z:0},{x:size,y:-size,z:0},{x:size,y:size,z:0},{x:-size,y:size,z:0}]},
-      {layer: "execution", label: "Execution", points: [{x:-size,y:-size,z:290},{x:size,y:-size,z:290},{x:size,y:size,z:290},{x:-size,y:size,z:290}]}
-    ];
-  }
+  const size = ORTHOGONAL_SIZE;
   return [
-    {layer: "knowledge", label: "XY · Knowledge", points: [{x:0,y:0,z:0},{x:size,y:0,z:0},{x:size,y:size,z:0},{x:0,y:size,z:0}]},
-    {layer: "control", label: "XZ · Control", points: [{x:0,y:0,z:0},{x:size,y:0,z:0},{x:size,y:0,z:size},{x:0,y:0,z:size}]},
-    {layer: "execution", label: "YZ · Execution", points: [{x:0,y:0,z:0},{x:0,y:size,z:0},{x:0,y:size,z:size},{x:0,y:0,z:size}]}
+    {layer: "state", label: "XY · State / Evidence", points: [{x:0,y:0,z:0},{x:size,y:0,z:0},{x:size,y:size,z:0},{x:0,y:size,z:0}]},
+    {layer: "control", label: "XZ · Control / Policy", points: [{x:0,y:0,z:0},{x:size,y:0,z:0},{x:size,y:0,z:size},{x:0,y:0,z:size}]},
+    {layer: "action", label: "YZ · Action / Interface", points: [{x:0,y:0,z:0},{x:0,y:size,z:0},{x:0,y:size,z:size},{x:0,y:0,z:size}]}
   ];
 }
 function chooseSpatialInstance(instances, nodeId, flowKind) {
@@ -2813,25 +2706,51 @@ function chooseSpatialInstance(instances, nodeId, flowKind) {
     return score(right) - score(left) || left.key.localeCompare(right.key);
   })[0];
 }
-function spatialEdgePath(from, to) {
-  const dx = to.x - from.x;
-  const dy = to.y - from.y;
-  const length = Math.max(1, Math.hypot(dx, dy));
-  const bend = Math.min(28, length * .12);
-  const midX = (from.x + to.x) / 2 - dy / length * bend;
-  const midY = (from.y + to.y) / 2 + dx / length * bend;
-  return "M " + from.x.toFixed(1) + " " + from.y.toFixed(1) + " Q " + midX.toFixed(1) + " " + midY.toFixed(1) + " " + to.x.toFixed(1) + " " + to.y.toFixed(1);
+function spatialOrthogonalRoute(fromInstance, toInstance) {
+  const from = fromInstance.point;
+  const to = toInstance.point;
+  const fromLayer = fromInstance.displayLayer;
+  const toLayer = toInstance.displayLayer;
+  if (fromLayer === toLayer) {
+    if (fromLayer === "state") {
+      const midX = (from.x + to.x) / 2;
+      return [from, {x: midX, y: from.y, z: 0}, {x: midX, y: to.y, z: 0}, to];
+    }
+    if (fromLayer === "control") {
+      const midX = (from.x + to.x) / 2;
+      return [from, {x: midX, y: 0, z: from.z}, {x: midX, y: 0, z: to.z}, to];
+    }
+    const midY = (from.y + to.y) / 2;
+    return [from, {x: 0, y: midY, z: from.z}, {x: 0, y: midY, z: to.z}, to];
+  }
+  const pair = new Set([fromLayer, toLayer]);
+  let route;
+  if (pair.has("state") && pair.has("control")) {
+    const statePoint = fromLayer === "state" ? from : to;
+    const controlPoint = fromLayer === "control" ? from : to;
+    route = [statePoint, {x: statePoint.x, y: 0, z: 0}, {x: controlPoint.x, y: 0, z: 0}, controlPoint];
+    return fromLayer === "state" ? route : route.reverse();
+  }
+  if (pair.has("state") && pair.has("action")) {
+    const statePoint = fromLayer === "state" ? from : to;
+    const actionPoint = fromLayer === "action" ? from : to;
+    route = [statePoint, {x: 0, y: statePoint.y, z: 0}, {x: 0, y: actionPoint.y, z: 0}, actionPoint];
+    return fromLayer === "state" ? route : route.reverse();
+  }
+  const controlPoint = fromLayer === "control" ? from : to;
+  const actionPoint = fromLayer === "action" ? from : to;
+  route = [controlPoint, {x: 0, y: 0, z: controlPoint.z}, {x: 0, y: 0, z: actionPoint.z}, actionPoint];
+  return fromLayer === "control" ? route : route.reverse();
 }
 function resetSpatialCamera() {
   if (spatialMode === "flow") {
     spatialCamera = {yaw: 0, pitch: 0, scale: 1};
     return;
   }
-  if (spatialLayer === "knowledge") spatialCamera = {yaw: 0, pitch: 0, scale: 1.08};
+  if (spatialLayer === "state") spatialCamera = {yaw: 0, pitch: 0, scale: 1.08};
   else if (spatialMode === "orthogonal" && spatialLayer === "control") spatialCamera = {yaw: 0, pitch: -Math.PI / 2, scale: 1.08};
-  else if (spatialMode === "orthogonal" && spatialLayer === "execution") spatialCamera = {yaw: -Math.PI / 2, pitch: 0, scale: 1.08};
-  else if (spatialMode === "parallel" && spatialLayer !== "all") spatialCamera = {yaw: 0, pitch: 0, scale: 1.08};
-  else spatialCamera = spatialMode === "orthogonal" ? {yaw: -0.62, pitch: 0.48, scale: 1} : {yaw: -0.62, pitch: 0.38, scale: .92};
+  else if (spatialMode === "orthogonal" && spatialLayer === "action") spatialCamera = {yaw: -Math.PI / 2, pitch: 0, scale: 1.08};
+  else spatialCamera = {yaw: -0.62, pitch: 0.48, scale: 1};
 }
 function appendSpatialArrowMarker(svg) {
   const defs = svgElement("defs");
@@ -2843,9 +2762,11 @@ function appendSpatialArrowMarker(svg) {
 function appendSpatialNodeButton(nodeLayer, instance, screen, index, runtimeMap, replayState, related) {
   const button = document.createElement("button");
   button.type = "button";
-  button.className = "spatial-node" + (spatialMode === "flow" ? " flow-node" : "") + (instance.projectionCopy ? " projection-copy" : "") + (selectedId === instance.sourceId ? " selected" : "") + (related && !related.has(instance.sourceId) ? " dim" : "") + replayNodeClass(instance.node, replayState);
+  button.className = "spatial-node" + (spatialMode === "flow" ? " flow-node" : "") + (selectedId === instance.sourceId ? " selected" : "") + (related && !related.has(instance.sourceId) ? " dim" : "") + replayNodeClass(instance.node, replayState);
   button.dataset.nodeId = instance.sourceId;
+  button.dataset.sourceNodeId = instance.sourceId;
   button.dataset.instanceKey = instance.key;
+  button.dataset.displayLayer = instance.displayLayer;
   button.dataset.modelPoint = instance.point.x + "," + instance.point.y + "," + instance.point.z;
   if (spatialMode === "flow") {
     button.dataset.flowRank = String(instance.rank);
@@ -2853,7 +2774,7 @@ function appendSpatialNodeButton(nodeLayer, instance, screen, index, runtimeMap,
   button.style.left = screen.x + "px";
   button.style.top = screen.y + "px";
   button.style.zIndex = String(30 + index);
-  const primaryLayer = instance.displayLayer && SPATIAL_LAYER_COLORS[instance.displayLayer] ? instance.displayLayer : (instance.layers[instance.layers.length - 1] || "knowledge");
+  const primaryLayer = instance.displayLayer && SPATIAL_LAYER_COLORS[instance.displayLayer] ? instance.displayLayer : (instance.layers[0] || "state");
   button.style.setProperty("--node-color", SPATIAL_LAYER_COLORS[primaryLayer]);
   const top = document.createElement("div");
   top.className = "spatial-node-top";
@@ -2879,14 +2800,14 @@ function finishSpatialRender(nodes, instances, runtimeMap, snapshot) {
   empty.hidden = instances.length > 0;
   const summary = document.getElementById("spatialLayerSummary");
   clearElement(summary);
-  ["knowledge", "control", "execution"].forEach(function (layer) {
+  ["state", "control", "action"].forEach(function (layer) {
     const count = nodes.filter(function (node) { return effectiveMembership(node, runtimeMap).includes(layer); }).length;
     summary.appendChild(createText("span", "spatial-layer-chip", layer[0].toUpperCase() + " · " + count));
   });
   if (snapshot) summary.appendChild(createText("span", "spatial-layer-chip", (snapshot.run_label || snapshot.run_id)));
-  if (!snapshot || !snapshot.has_runtime_overlay) summary.appendChild(createText("span", "spatial-layer-chip", message("executionNoRuntime")));
-  const titleKey = spatialMode === "flow" ? "flowTitle" : spatialMode === "orthogonal" ? "orthogonalTitle" : "parallelTitle";
-  const subtitleKey = spatialMode === "flow" ? "flowSubtitle" : spatialMode === "orthogonal" ? "orthogonalSubtitle" : "parallelSubtitle";
+  if (!hasObservedExecutionTrack(snapshot)) summary.appendChild(createText("span", "spatial-layer-chip", message("executionNoRuntime")));
+  const titleKey = spatialMode === "flow" ? "flowTitle" : "orthogonalTitle";
+  const subtitleKey = spatialMode === "flow" ? "flowSubtitle" : "orthogonalSubtitle";
   document.getElementById("spatialTitle").textContent = message(titleKey);
   const cycleWarning = spatialMode === "flow" && document.getElementById("spatialStage").dataset.flowCycle === "true" ? " " + message("flowCycleWarning") : "";
   document.getElementById("spatialSubtitle").textContent = message(subtitleKey) + cycleWarning;
@@ -2957,7 +2878,7 @@ function renderSpatial() {
   const nodeLayer = document.getElementById("spatialNodeLayer");
   document.getElementById("planWorkbench").dataset.planView = spatialMode;
   stage.dataset.viewMode = spatialMode;
-  stage.dataset.coordinateDomain = spatialMode === "flow" ? "explicit-precedes-rank;vertical-branch-avoidance" : spatialMode === "orthogonal" ? "x>=0;y>=0;z>=0" : "centered-parallel";
+  stage.dataset.coordinateDomain = spatialMode === "flow" ? "explicit-precedes-rank;vertical-branch-avoidance" : "x>=0;y>=0;z>=0;strict-primary-plane;axis-routed";
   stage.dataset.camera = "yaw=" + spatialCamera.yaw + ";pitch=" + spatialCamera.pitch + ";scale=" + spatialCamera.scale;
   const viewportWidth = Math.max(320, stage.clientWidth || 1200);
   const viewportHeight = Math.max(spatialMode === "flow" ? 330 : 460, stage.clientHeight || (spatialMode === "flow" ? 350 : 560));
@@ -2991,11 +2912,11 @@ function renderSpatial() {
   const width = viewportWidth;
   const height = viewportHeight;
   svg.setAttribute("viewBox", "0 0 " + width + " " + height);
-  let instances = spatialMode === "orthogonal" ? buildOrthogonalInstances(nodes, runtimeMap) : buildParallelInstances(nodes, runtimeMap);
+  let instances = buildOrthogonalInstances(nodes, runtimeMap);
   if (spatialLayer !== "all") instances = instances.filter(function (instance) { return instance.layers.includes(spatialLayer); });
   const projected = new Map();
   instances.forEach(function (instance) { projected.set(instance.key, projectSpatialPoint(instance.point, width, height)); });
-  relaxSpatialLabels(projected, instances, width, height);
+  const labelPositions = spatialLabelPositions(projected, instances, width, height);
   spatialRenderState = {instances: instances, instanceByKey: new Map(instances.map(function (item) { return [item.key, item]; })), visibleIds: new Set(nodes.map(function (node) { return node.id; }))};
 
   appendSpatialArrowMarker(svg);
@@ -3019,7 +2940,7 @@ function renderSpatial() {
 
   if (spatialMode === "orthogonal" && spatialLayer === "all") {
     const axisEnd = ORTHOGONAL_SIZE + 30;
-    [[{x:0,y:0,z:0},{x:axisEnd,y:0,z:0},"X+ · K↔C"],[{x:0,y:0,z:0},{x:0,y:axisEnd,z:0},"Y+ · E↔K"],[{x:0,y:0,z:0},{x:0,y:0,z:axisEnd},"Z+ · C↔E"]].forEach(function (axis) {
+    [[{x:0,y:0,z:0},{x:axisEnd,y:0,z:0},"X+ · S↔C"],[{x:0,y:0,z:0},{x:0,y:axisEnd,z:0},"Y+ · A↔S"],[{x:0,y:0,z:0},{x:0,y:0,z:axisEnd},"Z+ · C↔A"]].forEach(function (axis) {
       const from = projectSpatialPoint(axis[0], width, height);
       const to = projectSpatialPoint(axis[1], width, height);
       const line = svgElement("line", {class: "spatial-axis", x1: from.x, y1: from.y, x2: to.x, y2: to.y, stroke: "var(--edge)"});
@@ -3037,41 +2958,29 @@ function renderSpatial() {
     svg.appendChild(originLabel);
   }
 
-  if (spatialMode === "parallel" && spatialLayer === "all") {
-    const copies = new Map();
-    instances.forEach(function (instance) {
-      if (!copies.has(instance.sourceId)) copies.set(instance.sourceId, []);
-      copies.get(instance.sourceId).push(instance);
-    });
-    copies.forEach(function (items) {
-      if (items.length < 2) return;
-      items.sort(function (left, right) { return left.point.z - right.point.z; });
-      for (let index = 0; index < items.length - 1; index += 1) {
-        const from = projected.get(items[index].key);
-        const to = projected.get(items[index + 1].key);
-        svg.appendChild(svgElement("line", {x1: from.x, y1: from.y, x2: to.x, y2: to.y, stroke: "var(--edge-soft)", "stroke-dasharray": "3 6", opacity: selectedId === items[index].sourceId ? .85 : .22}));
-      }
-    });
-  }
-
   const relationMode = document.getElementById("relationFilter").value;
   const related = selectedId ? adjacentIds(selectedId) : null;
   spatialCatalogRelations().filter(function (relation) {
     if (!spatialRenderState.visibleIds.has(relation.from) || !spatialRenderState.visibleIds.has(relation.to)) return false;
     return relationMode === "all" || primaryEdgeTypes.has(relation.type) || (relation.type === "contains" && relation.from === (snapshot && snapshot.run_id));
   }).forEach(function (relation, index) {
-    const flowKind = relation.flow_kind || (primaryEdgeTypes.has(relation.type) ? "control" : "knowledge");
+    const flowKind = relation.flow_kind || (primaryEdgeTypes.has(relation.type) ? "control" : "state");
     const fromInstance = chooseSpatialInstance(instances, relation.from, flowKind);
     const toInstance = chooseSpatialInstance(instances, relation.to, flowKind);
     if (!fromInstance || !toInstance || fromInstance.key === toInstance.key) return;
-    const from = projected.get(fromInstance.key);
-    const to = projected.get(toInstance.key);
-    const pathText = spatialEdgePath(from, to);
+    const modelRoute = spatialOrthogonalRoute(fromInstance, toInstance);
+    const pathText = modelRoute.map(function (point, routeIndex) {
+      const screen = projectSpatialPoint(point, width, height);
+      return (routeIndex ? "L " : "M ") + screen.x.toFixed(1) + " " + screen.y.toFixed(1);
+    }).join(" ");
     const selected = selectedId && (relation.from === selectedId || relation.to === selectedId);
     const dim = related && (!related.has(relation.from) || !related.has(relation.to));
     const color = SPATIAL_FLOW_COLORS[flowKind] || "var(--edge)";
     const family = relationFamily(relation.type);
     const path = svgElement("path", {class: "spatial-edge relation-" + family + (selected ? " selected" : "") + (dim ? " dim" : "") + replayEdgeClass(relation, replayState), d: pathText, stroke: color, opacity: selected ? 1 : .56, "marker-end": "url(#spatialArrow)", "data-edge-id": relation.id, "data-edge-family": family, "data-edge-type": relation.type});
+    path.dataset.modelRoute = modelRoute.map(function (point) { return point.x + "," + point.y + "," + point.z; }).join(";");
+    path.dataset.fromLayer = fromInstance.displayLayer;
+    path.dataset.toLayer = toInstance.displayLayer;
     path.appendChild(document.createElementNS("http://www.w3.org/2000/svg", "title")).textContent = edgeTypeLabel(relation.type) + ": " + relation.from + " → " + relation.to;
     svg.appendChild(path);
     const replayParticle = replayState.active && replayState.currentEdgeIds.has(relation.id) && replayState.mode === "observed" && hasObservedExecutionTrack(snapshot);
@@ -3083,8 +2992,25 @@ function renderSpatial() {
     }
   });
 
+  instances.forEach(function (instance) {
+    const anchor = projected.get(instance.key);
+    const labelPoint = labelPositions.get(instance.key);
+    const color = SPATIAL_LAYER_COLORS[instance.displayLayer] || "var(--edge)";
+    const distance = Math.hypot(labelPoint.x - anchor.x, labelPoint.y - anchor.y);
+    if (distance > 5) {
+      const tether = svgElement("line", {class: "spatial-node-tether", x1: anchor.x, y1: anchor.y, x2: labelPoint.x, y2: labelPoint.y, stroke: color});
+      tether.dataset.sourceNodeId = instance.sourceId;
+      svg.appendChild(tether);
+    }
+    const anchorDot = svgElement("circle", {class: "spatial-node-anchor", cx: anchor.x, cy: anchor.y, r: 3.2, fill: color});
+    anchorDot.dataset.sourceNodeId = instance.sourceId;
+    anchorDot.dataset.displayLayer = instance.displayLayer;
+    anchorDot.dataset.modelPoint = instance.point.x + "," + instance.point.y + "," + instance.point.z;
+    svg.appendChild(anchorDot);
+  });
+
   instances.slice().sort(function (left, right) { return projected.get(left.key).depth - projected.get(right.key).depth; }).forEach(function (instance, index) {
-    appendSpatialNodeButton(nodeLayer, instance, projected.get(instance.key), index, runtimeMap, replayState, related);
+    appendSpatialNodeButton(nodeLayer, instance, labelPositions.get(instance.key), index, runtimeMap, replayState, related);
   });
   finishSpatialRender(nodes, instances, runtimeMap, snapshot);
 }
@@ -3293,7 +3219,6 @@ function updateStaticText() {
   setOptionText("relationFilter", "all", message("relationsAll"));
   setOptionText("planViewSelect", "flow", message("planViewFlow"));
   setOptionText("planViewSelect", "orthogonal", message("planViewOrthogonal"));
-  setOptionText("planViewSelect", "parallel", message("planViewParallel"));
   document.getElementById("drawerClose").setAttribute("aria-label", message("close"));
   document.getElementById("resetCamera").title = message("resetCamera");
   document.getElementById("rotateLeft").title = message("rotateLeft");
@@ -3376,7 +3301,7 @@ function activateWorkspaceMode(mode) {
   renderWorkspace();
 }
 function activatePlanView(mode) {
-  spatialMode = mode === "parallel" || mode === "orthogonal" || mode === "flow" ? mode : "flow";
+  spatialMode = mode === "orthogonal" || mode === "flow" ? mode : "flow";
   stopReplayPlayback();
   resetSpatialCamera();
   const viewport = document.getElementById("spatialViewport");
@@ -3559,7 +3484,7 @@ def write_projection(
         "display": {
             "default_locale": default_locale,
             "locales": sorted((display_locales or {}).keys()),
-            "style_reference": "ACG Case workspace with explicit task dependencies; spatial-0.1 orthogonal and parallel views remain auxiliary",
+            "style_reference": "ACG three-layer workbench with spatial-0.2 strict orthogonal auxiliary view and independent runtime trace",
         },
         "outputs": {
             name: {"sha256": sha256_file(target / name), "size_bytes": (target / name).stat().st_size}

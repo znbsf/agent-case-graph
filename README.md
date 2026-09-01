@@ -6,7 +6,7 @@
 
 **Evidence-first graph protocol and spatial workbench for auditable agent runs.**
 
-Agent Case Graph（ACG）把 Agent 处理问题的过程保存为 append-only JSONL，再确定性投影为知识图、控制图和执行状态。它关注的不只是“画一张图”，而是让图回答：
+Agent Case Graph（ACG）把 Agent 处理问题的过程保存为 append-only JSONL，再确定性投影为状态/证据、控制/策略、动作/接口三层闭环，并把 Runtime Trace 作为独立覆盖层。它关注的不只是“画一张图”，而是让图回答：
 
 - 我们知道什么，证据来自哪里？
 - 哪个动作现在允许执行，为什么？
@@ -22,30 +22,30 @@ Append-only Event Ledger
           |
           v
 Canonical typed graph
-  | Knowledge: Case / Evidence / Observation / Claim / Decision
-  | Control:   Goal / Run / Step / Approval / Dependency / Gate
-  | Execution: Ready / Running / Blocked / Completed / Checkpoint
+  | State / Evidence:    input / observation / claim / artifact / memory
+  | Control / Policy:    goal / decision / approval / dependency / gate
+  | Action / Interface:  agent / skill / tool / target / action
+  + Runtime Trace:       ready / running / blocked / completed / checkpoint
           |
           +--> Workspace: Overview / Plan / Run / Review / Evidence
-          +--> Plan views: dependency flow / orthogonal planes / parallel layers
+          +--> Plan views: dependency flow / orthogonal planes
           +--> Sequence inspector: Ledger / Plan / Candidate / Observed
 ```
 
-同一个 canonical node 可以出现在多个投影中，但共享稳定 ID。页面坐标、卡片位置和记录顺序都不会被升级成新的因果事实。
+每个 canonical node 严格属于一个语义层，Runtime 只给该节点叠加状态，不把它复制成第四类事实。页面坐标、卡片位置和记录顺序都不会被升级成新的因果事实。
 
 ## 一个工作台，五种任务模式
 
-- **总览（Overview）**：用 Knowledge / Control / Execution 三层语义概括 Case，先回答“知道什么、计划什么、执行到哪里”。
+- **总览（Overview）**：用 State / Control / Action 三层闭环概括 Case，先回答“当前状态是什么、如何决定、实际调用什么”，Runtime Trace 只叠加真实状态。
 - **规划（Plan）**：检查显式依赖、当前候选顺序和阻塞关系；这是唯一承载空间图与顺序检查器的模式。
 - **运行（Run）**：按 `ready / running / blocked / completed / failed` 展示当前 frontier；空状态合并提示，不占据整列。
 - **复盘（Review）**：聚合记录边界、运行结论与证据缺口，并回到规划页检查顺序，不复制一套播放器。
 - **证据（Evidence）**：枚举 `supports / explains / implemented_by / checks` 形成的所有显式分支路径，检查论证和验收关系，不按节点类型补造链路。
 
-规划页包含三个互补的辅助视图：
+规划页包含两个互补的辅助视图：
 
 - **依赖图**：主画布只用显式 `precedes` 解释计划偏序；当前 Runtime 门禁与主要阻塞在同页检查器中显示。
-- **结构三面**：在 `x/y/z >= 0` 的第一卦限中展示 `XY = Knowledge / XZ = Control / YZ = Execution` 的层间接口。
-- **三层投影**：把 Knowledge / Control / Execution 拉开，便于沿显式关系阅读和定位。
+- **正交三面**：在 `x/y/z >= 0` 的第一卦限中斜向展示 `XY = State / XZ = Control / YZ = Action`；节点严格位于一个面上，跨面关系经共享正轴转接。
 
 五种模式共享同一份 canonical graph、Run 选择和详情侧栏，不复制事实，也不让页面位置成为因果。HTML 由原生 SVG、HTML 和 JavaScript 组成，自包含、无 CDN，可以离线直接打开。
 

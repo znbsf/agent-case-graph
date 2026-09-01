@@ -1,15 +1,16 @@
-"""Deterministic semantic catalog for the three-layer ACG spatial view.
+"""Deterministic semantic catalog for the three-surface ACG spatial view.
 
 The spatial catalog is deliberately a semantic projection, not a layout
-engine.  It records which canonical nodes participate in the Knowledge and
-Control layers, which selected runtime instances participate in Execution,
-the three pairwise plane intersections, and flow metadata for canonical
-relations.  Coordinates, sizes, routes, and other page decisions do not
-belong here.
+engine.  Each canonical node has exactly one primary surface: State,
+Control, or Action.  Runtime frontier information is a status overlay and
+never changes that semantic home; observed execution remains a separate replay
+trace.  The catalog also records the three pairwise interfaces
+and flow metadata for canonical relations.  Coordinates, sizes, routes, and
+other page decisions do not belong here.
 
 ``graph`` is the canonical projection produced by :mod:`projector`.  Its
 ``runtime`` member is the runtime-0.1 catalog produced by :mod:`runtime`.
-Only that explicit runtime catalog can populate the Execution layer; a
+Only that explicit runtime catalog can populate the runtime overlay; a
 ``runtime_managed`` attribute on a canonical node by itself is not enough.
 """
 
@@ -21,20 +22,38 @@ from typing import Any
 from .model import ACGError, NODE_TYPES
 
 
-SPATIAL_PROTOCOL_VERSION = "spatial-0.1"
-LAYER_NAMES = ("knowledge", "control", "execution")
+SPATIAL_PROTOCOL_VERSION = "spatial-0.2"
+LAYER_NAMES = ("state", "control", "action")
 INTERFACE_NAMES = (
-    "knowledge-control",
-    "control-execution",
-    "execution-knowledge",
+    "state-control",
+    "control-action",
+    "action-state",
 )
 
-# The type split follows the ACG architecture contract rather than the
-# renderer's stage presets.  Provenance and knowledge records remain on the
-# Knowledge surface.  Nodes that define or gate a Run also appear on the
-# Control surface.  Action/Approval/Verification intentionally belong to
-# both surfaces: they are provenance facts and control-plane contracts.
-KNOWLEDGE_NODE_TYPES = frozenset(NODE_TYPES - {"Run", "Step"})
+# A canonical node has one semantic home.  Cross-surface meaning belongs to
+# relations and projections, not duplicate membership.  This makes the three
+# surfaces geometrically strict and keeps runtime state independent.
+STATE_NODE_TYPES = frozenset(
+    {
+        "Graph",
+        "ProblemType",
+        "Case",
+        "EnvironmentSnapshot",
+        "Artifact",
+        "Observation",
+        "Claim",
+        "RootCause",
+        "Uncertainty",
+        "ScopeBoundary",
+        "VerificationReceipt",
+        "Pattern",
+        "Runbook",
+        "SkillVersion",
+        "EvalCase",
+        "DriftFinding",
+        "ExternalIssue",
+    }
+)
 CONTROL_NODE_TYPES = frozenset(
     {
         "Run",
@@ -42,20 +61,40 @@ CONTROL_NODE_TYPES = frozenset(
         "Goal",
         "AcceptanceCriterion",
         "Decision",
+        "Approval",
+        "Policy",
+        "Verification",
+    }
+)
+ACTION_NODE_TYPES = frozenset(
+    {
+        "Actor",
         "Capability",
         "Agent",
         "Skill",
         "Tool",
         "Target",
         "Action",
-        "Approval",
-        "Policy",
-        "Verification",
     }
 )
 
+_LAYER_TYPE_SETS = (STATE_NODE_TYPES, CONTROL_NODE_TYPES, ACTION_NODE_TYPES)
+if frozenset().union(*_LAYER_TYPE_SETS) != NODE_TYPES:
+    raise RuntimeError("spatial-0.2 layer types must cover every canonical NODE_TYPE")
+if any(
+    left & right
+    for index, left in enumerate(_LAYER_TYPE_SETS)
+    for right in _LAYER_TYPE_SETS[index + 1 :]
+):
+    raise RuntimeError("spatial-0.2 layer type sets must be disjoint")
+
+# Compatibility aliases for callers that imported the spatial-0.1 constants.
+# They now identify the nearest spatial-0.2 surface rather than overlapping
+# memberships.
+KNOWLEDGE_NODE_TYPES = STATE_NODE_TYPES
+EXECUTION_NODE_TYPES = ACTION_NODE_TYPES
+
 RUNTIME_LANES = ("ready", "running", "blocked", "completed", "failed")
-_DYNAMIC_EDGE_TYPES = frozenset({"precedes", "produces"})
 _CONTROL_EDGE_TYPES = frozenset(
     {
         "contains",
@@ -102,22 +141,15 @@ def _require_graph_list(graph: dict[str, Any], key: str) -> list[dict[str, Any]]
 
 def _canonical_membership(node: dict[str, Any]) -> list[str]:
     node_type = node.get("type")
-    membership: list[str] = []
-    if node_type in KNOWLEDGE_NODE_TYPES:
-        membership.append("knowledge")
+    if node_type in STATE_NODE_TYPES:
+        return ["state"]
     if node_type in CONTROL_NODE_TYPES:
-        membership.append("control")
-    # A future/extension node must remain visible.  Unknown canonical node
-    # types are facts by default, never silently dropped from the catalog.
-    if not membership:
-        membership.append("knowledge")
-    return membership
-
-
-def _normalise_membership(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    return [item for item in LAYER_NAMES if item in value]
+        return ["control"]
+    if node_type in ACTION_NODE_TYPES:
+        return ["action"]
+    # A future/extension node must remain visible. Unknown canonical node
+    # types are state records by default, never silently dropped.
+    return ["state"]
 
 
 def _runtime_runs(runtime: Any) -> list[dict[str, Any]]:
@@ -181,7 +213,7 @@ def _runtime_entries(
                 continue
             # Runtime snapshots are expected to place an ID in one lane.  If
             # malformed input repeats it, fixed lane order gives a stable
-            # result and avoids duplicate Execution membership.
+            # runtime-overlay result.
             if node_id in entries:
                 continue
             canonical = nodes_by_id.get(node_id, {})
@@ -192,7 +224,9 @@ def _runtime_entries(
             instance["run_id"] = run_id
             instance["runtime_lane"] = lane
             instance["source_kind"] = "runtime"
-            instance["membership"] = ["execution"]
+            instance["membership"] = ["runtime-overlay"]
+            canonical_membership = _canonical_membership(canonical)
+            instance["primary_layer"] = canonical_membership[0]
             if "type" not in instance and canonical.get("type") is not None:
                 instance["type"] = canonical["type"]
             if "label" not in instance and canonical.get("label") is not None:
@@ -242,9 +276,9 @@ def _interface_pairs(
 ) -> list[str]:
     result: list[str] = []
     for name, left, right in (
-        ("knowledge-control", "knowledge", "control"),
-        ("control-execution", "control", "execution"),
-        ("execution-knowledge", "execution", "knowledge"),
+        ("state-control", "state", "control"),
+        ("control-action", "control", "action"),
+        ("action-state", "action", "state"),
     ):
         if (left in from_membership and right in to_membership) or (
             right in from_membership and left in to_membership
@@ -255,7 +289,7 @@ def _interface_pairs(
 
 def _same_layer_flow(from_membership: list[str], to_membership: list[str]) -> str:
     common = [layer for layer in LAYER_NAMES if layer in from_membership and layer in to_membership]
-    return common[0] if common else "knowledge"
+    return common[0] if common else "state"
 
 
 def _flow_kind(
@@ -270,20 +304,12 @@ def _flow_kind(
         return attrs["flow_kind"]
 
     edge_type = edge.get("type")
-    if edge_type in _CONTROL_EDGE_TYPES and "control" in from_membership + to_membership:
-        # Scheduling and gating remain control semantics even when their
-        # selected runtime overlay also touches the Control/Execution axis.
-        return "control"
-    if edge_type == "produces" and "execution" in from_membership and "knowledge" in to_membership:
-        return "execution-knowledge"
-    if edge_type in {"supports", "refutes", "explains", "derived_from", "references", "generalizes_to", "regression_of"}:
-        if "knowledge-control" in interfaces:
-            return "knowledge-control"
-        return "knowledge"
     if interfaces:
-        # Pairwise interface order is part of the protocol and makes the
-        # result independent of canonical edge/list order.
         return interfaces[0]
+    if edge_type in _CONTROL_EDGE_TYPES and "control" in from_membership + to_membership:
+        return "control"
+    if edge_type in {"supports", "refutes", "explains", "derived_from", "references", "generalizes_to", "regression_of"}:
+        return "state"
     return _same_layer_flow(from_membership, to_membership)
 
 
@@ -299,7 +325,7 @@ def build_spatial_catalog(
     run_id: str | None = None,
     runtime: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Build a deterministic ``spatial-0.1`` semantic catalog.
+    """Build a deterministic ``spatial-0.2`` semantic catalog.
 
     Args:
         graph: Canonical projected graph.  It must contain ``nodes`` and
@@ -313,7 +339,8 @@ def build_spatial_catalog(
 
     Returns:
         A JSON-compatible dictionary containing canonical node/relationship
-        records plus ``layers``, ``interfaces``, and ``selected_runtime``.
+        records plus ``layers``, ``interfaces``, ``runtime_overlay``, and
+        ``selected_runtime``.
         It contains no layout coordinates or renderer-derived positions.
     """
 
@@ -339,6 +366,7 @@ def build_spatial_catalog(
         output_node = deepcopy(node)
         output_node["membership"] = list(membership)
         output_node["canonical_membership"] = list(membership)
+        output_node["primary_layer"] = membership[0]
         output_node["source_kind"] = "canonical"
         canonical_nodes.append(output_node)
 
@@ -389,22 +417,20 @@ def build_spatial_catalog(
             ),
         }
 
-    execution_ids = set(selected_node_ids)
-    effective_memberships: dict[str, list[str]] = {}
-    for node_id, membership in canonical_memberships.items():
-        effective = list(membership)
-        if node_id in execution_ids:
-            effective.append("execution")
-        effective_memberships[node_id] = [layer for layer in LAYER_NAMES if layer in effective]
+    runtime_overlay_ids = set(selected_node_ids)
+    effective_memberships = canonical_memberships
 
-    # Reflect the selected overlay on canonical nodes without changing the
-    # source graph.  Runtime instance details remain in Execution.nodes.
+    # Reflect the selected runtime status on canonical nodes without changing
+    # their semantic home. Observed execution is represented only by replay
+    # execution telemetry, not by this snapshot.
     for node in canonical_nodes:
         node_id = node["id"]
-        node["membership"] = list(effective_memberships[node_id])
-        if node_id in execution_ids:
+        if node_id in runtime_overlay_ids:
             instance_id = f"{selected_snapshot['run_id']}::{node_id}" if selected_snapshot else None
             node["runtime_instance_id"] = instance_id
+            matching = next((item for item in selected_instances if item["node_id"] == node_id), None)
+            if matching is not None:
+                node["runtime_status"] = matching.get("runtime_lane")
 
     layer_members: dict[str, list[str]] = {
         layer: sorted(
@@ -413,13 +439,8 @@ def build_spatial_catalog(
         )
         for layer in LAYER_NAMES
     }
-    layer_instance_ids = {
-        "knowledge": [],
-        "control": [],
-        "execution": list(selected_instance_ids),
-    }
-    execution_nodes = deepcopy(selected_instances)
-    for item in execution_nodes:
+    overlay_nodes = deepcopy(selected_instances)
+    for item in overlay_nodes:
         item["canonical_membership"] = list(canonical_memberships.get(item["node_id"], []))
 
     relations: list[dict[str, Any]] = []
@@ -432,11 +453,13 @@ def build_spatial_catalog(
         interfaces = _interface_pairs(from_membership, to_membership)
         relation_interface_map[str(edge["id"])] = interfaces
         attrs = edge.get("attrs", {})
-        touches_execution = "execution" in from_membership or "execution" in to_membership
-        default_animated = touches_execution and edge.get("type") in _DYNAMIC_EDGE_TYPES
+        runtime_touched = str(from_id) in runtime_overlay_ids or str(to_id) in runtime_overlay_ids
+        default_animated = False
         relation = deepcopy(edge)
         relation["from_membership"] = list(from_membership)
         relation["to_membership"] = list(to_membership)
+        relation["from_layer"] = from_membership[0] if from_membership else None
+        relation["to_layer"] = to_membership[0] if to_membership else None
         relation["interfaces"] = list(interfaces)
         relation["flow_interfaces"] = list(interfaces)
         relation["flow_kind"] = _flow_kind(
@@ -448,55 +471,52 @@ def build_spatial_catalog(
         relation["actual"] = _bool_attr(attrs, "actual", True)
         relation["animated"] = _bool_attr(attrs, "animated", default_animated)
         relation["source_kind"] = "canonical"
-        if str(from_id) in execution_ids:
+        relation["runtime_touched"] = runtime_touched
+        if str(from_id) in runtime_overlay_ids:
             relation["from_instance_id"] = f"{selected_snapshot['run_id']}::{from_id}" if selected_snapshot else None
-        if str(to_id) in execution_ids:
+        if str(to_id) in runtime_overlay_ids:
             relation["to_instance_id"] = f"{selected_snapshot['run_id']}::{to_id}" if selected_snapshot else None
         relations.append(relation)
 
     interfaces: dict[str, dict[str, Any]] = {}
     for name, left, right in (
-        ("knowledge-control", "knowledge", "control"),
-        ("control-execution", "control", "execution"),
-        ("execution-knowledge", "execution", "knowledge"),
+        ("state-control", "state", "control"),
+        ("control-action", "control", "action"),
+        ("action-state", "action", "state"),
     ):
-        shared_node_ids = sorted(
-            set(layer_members[left]) & set(layer_members[right]),
-            key=lambda node_id: _node_sort_key(nodes_by_id[node_id]),
-        )
-        shared_instance_ids = [
-            item["instance_id"]
-            for item in selected_instances
-            if item["node_id"] in shared_node_ids
-        ]
         relation_ids = sorted(
             [edge_id for edge_id, edge_interfaces in relation_interface_map.items() if name in edge_interfaces],
             key=lambda edge_id: _edge_sort_key(edge_by_id[edge_id]),
         )
+        endpoint_ids = sorted(
+            {
+                str(endpoint)
+                for edge_id in relation_ids
+                for endpoint in (edge_by_id[edge_id].get("from"), edge_by_id[edge_id].get("to"))
+                if str(endpoint) in nodes_by_id
+            },
+            key=lambda node_id: _node_sort_key(nodes_by_id[node_id]),
+        )
         interfaces[name] = {
             "id": name,
             "layers": [left, right],
-            "membership": list(shared_node_ids),
-            "node_ids": list(shared_node_ids),
-            "instance_ids": list(shared_instance_ids),
+            "membership": [],
+            "node_ids": endpoint_ids,
+            "instance_ids": [],
             "relation_ids": relation_ids,
         }
 
     layers: dict[str, dict[str, Any]] = {}
     for layer in LAYER_NAMES:
         members = list(layer_members[layer])
-        instances = list(layer_instance_ids[layer])
         layers[layer] = {
             "id": layer,
             "membership": members,
             "node_ids": members,
-            "instance_ids": instances,
+            "instance_ids": [],
             "node_count": len(members),
-            "status": "empty" if layer == "execution" and not members else "populated",
+            "status": "populated" if members else "empty",
         }
-        if layer == "execution":
-            layers[layer]["nodes"] = execution_nodes
-            layers[layer]["selected_runtime"] = selected_runtime
 
     available_run_ids = sorted(
         [str(run.get("run_id")) for run in runs],
@@ -516,6 +536,14 @@ def build_spatial_catalog(
         "nodes": canonical_nodes,
         "relations": relations,
         "selected_runtime": selected_runtime,
+        "runtime_overlay": {
+            "status": "populated" if selected_instances else "empty",
+            "membership": list(selected_node_ids),
+            "node_ids": list(selected_node_ids),
+            "instance_ids": list(selected_instance_ids),
+            "nodes": overlay_nodes,
+            "selected_runtime": selected_runtime,
+        },
         "runtime": {
             "protocol_version": runtime_dict.get("protocol_version") if runtime_dict else None,
             "available_run_ids": available_run_ids,
@@ -530,11 +558,14 @@ build_spatial_projection = build_spatial_catalog
 
 
 __all__ = [
+    "ACTION_NODE_TYPES",
     "CONTROL_NODE_TYPES",
+    "EXECUTION_NODE_TYPES",
     "INTERFACE_NAMES",
     "KNOWLEDGE_NODE_TYPES",
     "LAYER_NAMES",
     "SPATIAL_PROTOCOL_VERSION",
+    "STATE_NODE_TYPES",
     "build_spatial_catalog",
     "build_spatial_projection",
 ]

@@ -4,7 +4,7 @@
   "nodes": {
     "case:DEMO-001": "解释并安全推进一个 Agent 任务",
     "run:DEMO-001:001": "快速入门空间工作台运行",
-    "goal:DEMO-001:clarity": "让证据、控制与执行易于检查",
+    "goal:DEMO-001:clarity": "让状态、控制与动作流向易于检查",
     "observation:DEMO-001:separation": "Agent 工作混合了事实、决策与运行状态",
     "claim:DEMO-001:canonical": "同一 canonical graph 可以支持多个易读投影",
     "decision:DEMO-001:two-views": "使用五模式工作台与辅助空间投影",

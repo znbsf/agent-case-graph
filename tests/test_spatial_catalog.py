@@ -103,38 +103,39 @@ def _graph(*, with_runtime=True):
 
 
 class SpatialCatalogTests(unittest.TestCase):
-    def test_catalog_has_three_memberships_and_pairwise_interfaces(self):
+    def test_catalog_has_one_primary_surface_and_relation_interfaces(self):
         catalog = build_spatial_catalog(_graph())
 
         self.assertEqual(SPATIAL_PROTOCOL_VERSION, catalog["protocol_version"])
         self.assertEqual(
-            {"case:1", "decision:1", "action:1", "approval:1", "observation:1", "verification:1"},
-            set(catalog["layers"]["knowledge"]["membership"]),
+            {"case:1", "observation:1"},
+            set(catalog["layers"]["state"]["membership"]),
         )
         self.assertEqual(
-            {"run:1", "step:1", "decision:1", "action:1", "approval:1", "verification:1"},
+            {"run:1", "step:1", "decision:1", "approval:1", "verification:1"},
             set(catalog["layers"]["control"]["membership"]),
         )
         self.assertEqual(
-            {"step:1", "action:1", "verification:1"},
-            set(catalog["layers"]["execution"]["membership"]),
+            {"action:1"},
+            set(catalog["layers"]["action"]["membership"]),
         )
         self.assertEqual(
-            {"decision:1", "action:1", "approval:1", "verification:1"},
-            set(catalog["interfaces"]["knowledge-control"]["membership"]),
+            [], catalog["interfaces"]["state-control"]["membership"]
         )
         self.assertEqual(
-            {"step:1", "action:1", "verification:1"},
-            set(catalog["interfaces"]["control-execution"]["membership"]),
+            {"e-target", "e-supports"},
+            set(catalog["interfaces"]["state-control"]["relation_ids"]),
         )
         self.assertEqual(
-            {"action:1", "verification:1"},
-            set(catalog["interfaces"]["execution-knowledge"]["membership"]),
+            {"e-contains-action", "e-precedes", "e-approved"},
+            set(catalog["interfaces"]["control-action"]["relation_ids"]),
         )
         self.assertEqual(
-            catalog["interfaces"]["control-execution"]["membership"],
-            catalog["interfaces"]["control-execution"]["node_ids"],
+            {"e-produces"},
+            set(catalog["interfaces"]["action-state"]["relation_ids"]),
         )
+        self.assertTrue(all(len(item["membership"]) == 1 for item in catalog["nodes"]))
+        self.assertTrue(all(item["primary_layer"] == item["membership"][0] for item in catalog["nodes"]))
 
     def test_selected_runtime_instances_are_explicit_and_relations_are_annotated(self):
         catalog = build_spatial_catalog(_graph())
@@ -148,35 +149,39 @@ class SpatialCatalogTests(unittest.TestCase):
             ["run:1::step:1", "run:1::action:1", "run:1::verification:1"],
             selected["instance_ids"],
         )
-        self.assertEqual("populated", catalog["layers"]["knowledge"]["status"])
-        self.assertTrue(all(item["membership"] == ["execution"] for item in selected["instances"]))
+        self.assertEqual("populated", catalog["layers"]["state"]["status"])
+        self.assertTrue(all(item["membership"] == ["runtime-overlay"] for item in selected["instances"]))
+        self.assertEqual(
+            ["step:1", "action:1", "verification:1"], catalog["runtime_overlay"]["node_ids"]
+        )
 
         by_id = {item["id"]: item for item in catalog["relations"]}
-        self.assertEqual("control", by_id["e-precedes"]["flow_kind"])
+        self.assertEqual("control-action", by_id["e-precedes"]["flow_kind"])
         self.assertTrue(by_id["e-precedes"]["actual"])
-        self.assertTrue(by_id["e-precedes"]["animated"])
-        self.assertEqual("execution-knowledge", by_id["e-produces"]["flow_kind"])
-        self.assertTrue(by_id["e-produces"]["animated"])
-        self.assertEqual("knowledge-control", by_id["e-supports"]["flow_kind"])
+        self.assertFalse(by_id["e-precedes"]["animated"])
+        self.assertEqual("action-state", by_id["e-produces"]["flow_kind"])
+        self.assertFalse(by_id["e-produces"]["animated"])
+        self.assertEqual("state-control", by_id["e-supports"]["flow_kind"])
         self.assertFalse(by_id["e-supports"]["animated"])
-        self.assertIn("execution-knowledge", by_id["e-produces"]["interfaces"])
+        self.assertIn("action-state", by_id["e-produces"]["interfaces"])
         self.assertEqual("run:1::action:1", by_id["e-produces"]["from_instance_id"])
+        self.assertTrue(by_id["e-produces"]["runtime_touched"])
+        self.assertFalse(by_id["e-produces"]["animated"])
 
-    def test_no_runtime_makes_execution_explicitly_empty(self):
+    def test_no_runtime_makes_overlay_explicitly_empty_without_changing_surfaces(self):
         graph = _graph(with_runtime=False)
         catalog = build_spatial_catalog(graph)
 
-        execution = catalog["layers"]["execution"]
-        self.assertEqual("empty", execution["status"])
-        self.assertEqual([], execution["membership"])
-        self.assertEqual([], execution["node_ids"])
-        self.assertEqual([], execution["instance_ids"])
-        self.assertEqual([], execution["nodes"])
-        self.assertIsNone(execution["selected_runtime"])
+        runtime_overlay = catalog["runtime_overlay"]
+        self.assertEqual("empty", runtime_overlay["status"])
+        self.assertEqual([], runtime_overlay["membership"])
+        self.assertEqual([], runtime_overlay["node_ids"])
+        self.assertEqual([], runtime_overlay["instance_ids"])
+        self.assertEqual([], runtime_overlay["nodes"])
+        self.assertIsNone(runtime_overlay["selected_runtime"])
         self.assertIsNone(catalog["selected_runtime"])
-        self.assertEqual([], catalog["interfaces"]["control-execution"]["membership"])
-        self.assertEqual([], catalog["interfaces"]["execution-knowledge"]["membership"])
-        self.assertTrue(all("execution" not in item["membership"] for item in catalog["nodes"]))
+        self.assertEqual({"action:1"}, set(catalog["layers"]["action"]["node_ids"]))
+        self.assertTrue(all(len(item["membership"]) == 1 for item in catalog["nodes"]))
 
     def test_catalog_is_independent_of_input_array_order_and_has_no_layout_facts(self):
         graph = _graph()

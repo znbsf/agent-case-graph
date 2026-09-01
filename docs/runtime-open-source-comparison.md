@@ -6,9 +6,11 @@
 
 ACG 不能只把 Case 事实投影成一张图。要让 Agent 真正借助图完成工作，需要把三类信息分开：
 
-1. **Knowledge Graph**：问题、证据、论断、动作、验证和来源，回答“我们知道什么”。
-2. **Control Graph**：待执行节点、显式前置关系、授权和阻塞条件，回答“允许做什么、下一步是什么”。
-3. **Execution Overlay**：一次 Run 的节点状态、attempt、Checkpoint、输入输出引用和错误，回答“这次实际执行到了哪里”。
+1. **State / Evidence**：输入、当前状态、观察、证据、论断、产物和记忆，回答“现在知道什么”。
+2. **Control / Policy**：目标、决策、依赖、授权、门禁和验证规则，回答“为什么这样选、允许做什么”。
+3. **Action / Interface**：Agent、Skill、Tool、Target 和 Action，回答“实际由谁通过什么接口做什么”。
+
+Runtime Trace 不是第四个语义层，而是一次 Run 对上述节点的状态、attempt、Checkpoint、输入输出引用和错误覆盖，回答“这次实际走到了哪里”。
 
 前端只消费这三层数据，不承担调度语义。
 
@@ -40,21 +42,20 @@ LangGraph 的 checkpoint 文档进一步区分完整的 super-step checkpoint �
 
 ACG 不把所有职责塞进一张无限扩张的 Canvas，也不为每个模式复制图数据。当前工作台把同一语义目录按用户任务组织成五种模式：
 
-- **Overview**：总览 Knowledge / Control / Execution 三层语义与 Case 边界。
+- **Overview**：总览 State / Control / Action 三层闭环与 Case 边界，Runtime Trace 只叠加在原节点上。
 - **Plan**：检查显式依赖、阻塞和候选调度；空间图与顺序检查器只在这里出现。
 - **Run**：查看 Ready frontier 和当前状态；空状态压缩展示，避免五列挤占画布。
 - **Review**：汇总记录边界、运行结论和证据缺口；需要逐帧检查时返回 Plan，而不是复制播放器。
 - **Evidence**：枚举 `supports / explains / implemented_by / checks` 形成的所有显式分支路径，检查论证与验收，不按节点类型补造关系。
 
-Plan 再提供三个互补的辅助视图：
+Plan 再提供两个互补的辅助视图：
 
 - **Dependency Flow**：主画布用显式 `precedes` 解释计划偏序，Runtime 门禁与主要阻塞由同页检查器呈现。
-- **Orthogonal Planes**：`XY Knowledge / XZ Control / YZ Execution`，共享轴表示层间接口。
-- **Parallel Layers**：三层分开排布，同源投影实例共享 canonical ID。
+- **Orthogonal Planes**：`XY State / XZ Control / YZ Action`，节点严格在一个面上，跨面关系经共享正轴转接。
 
 四条顺序轨道保持语义分离：Ledger 记录回答“写入顺序”，计划依赖回答“约束顺序”，候选调度回答“可行顺序”，已观测执行回答“executor 实际顺序”。只有最后一条接受 execution telemetry；缺失时显示 unavailable 且不动画。统一详情侧栏承载节点属性、直接关系、来源、raw JSON 与 Lint；逐项顺序检查只在 Plan 中出现。
 
-当前使用原生 SVG + HTML node card，是为了保证生成文件可离线直接打开、坐标确定、文本清晰且没有 CDN。节点规模或动画需求明显增长后，可把同一个 `spatial-0.1` catalog 接到固定版本的本地 Three.js bundle；渲染引擎变化不能改写 canonical graph 或 runtime 语义。公开 Quickstart 的 synthetic runtime 快照只用于展示 frontier 和门禁，不是 execution telemetry，因此已观测执行轨道保持 unavailable。
+当前使用原生 SVG + HTML node card，是为了保证生成文件可离线直接打开、坐标确定、文本清晰且没有 CDN。节点规模或动画需求明显增长后，可把同一个 `spatial-0.2` catalog 接到固定版本的本地 Three.js bundle；渲染引擎变化不能改写 canonical graph 或 runtime 语义。公开 Quickstart 的 synthetic runtime 快照只用于展示 frontier 和门禁，不是 execution telemetry，因此已观测执行轨道保持 unavailable。
 
 ## ACG runtime-0.1 选择
 
