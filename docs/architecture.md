@@ -44,8 +44,9 @@ The three levels follow the review hierarchy used by LEDGER: raw records remain 
 The Workflow tab is a deliberate projection: it includes workflow nodes plus
 evidence nodes that participate in a forward layout edge. Other evidence is
 not deleted; it remains in the Evidence tab, source Trace, and node relations.
-Containment is drawn only to branch roots rather than repeated beside every
-flow edge. Large ranks wrap after three cards without changing their canonical
+Containment remains available in node details, but it does not constrain or
+appear in the main workflow layout. Scope membership is not an execution
+dependency. Large ranks wrap after three cards without changing their canonical
 rank.
 
 Within one rank, horizontal order is display-only. The HTML renderer performs
@@ -70,9 +71,9 @@ review view.
 
 Only authored canonical edges are rendered.
 
-- solid: forward workflow or dependency relations such as `precedes`, `implemented_by`, `targets`;
-- dotted: evidence and provenance such as `supports`, `checks`, `uses`, `produces`, `derived_from`;
-- quiet: containment relations such as `has_run`, `contains`.
+- solid: forward workflow or dependency relations such as `frames`, `precedes`, `invokes`, `produces`, `targets`;
+- dotted: evidence and provenance such as `supports`, `checks`, `uses`, `informs`, `derived_from`;
+- scope-only: containment relations such as `contains`; they remain in node details and never affect DAG rank.
 
 Only the forward workflow/dependency set constrains DAG rank. Evidence and
 provenance relations remain authored facts, but they are reviewed in the HTML
@@ -81,6 +82,16 @@ This prevents a valid claim-to-evidence audit loop from turning the main graph
 into a false one-node-per-rank chain.
 
 The renderer never creates a missing support path from node types. A final Claim without explicit support remains visibly incomplete and is handled by lint.
+
+### Graph-only workflow inference
+
+The optional inference pass consumes the canonical graph, not the source
+conversation. `frames` binds a Goal revision to a Plan revision; `invokes` and
+`produces` recover actions and outputs; `supports` connects outputs to claims;
+`informs` records visible evidence or reasoning summaries that changed a plan.
+It reports semantic gaps such as a plan without goal context or a tool call
+without an explicit output. It cannot reconstruct hidden reasoning or raw tool
+payloads that were intentionally not modeled.
 
 ## 5. Two renderers, one model
 
@@ -111,6 +122,10 @@ The HTML contains no CDN dependency and never executes an Action.
 ## 6. Runtime remains separate
 
 Only explicit `runtime_managed=true` Step, Action and Verification nodes inside a Run enter the control plane. `next-actions` uses `precedes / blocked_by / approved_by`; `step-status` appends a checkpoint after validating the transition.
+
+An executable node's minimal context packet follows incoming context lineage for
+at most three hops, so `Action <- Plan <- Goal/ReasoningSummary` is available
+without loading the whole graph.
 
 The visual trace can explain runtime state but cannot declare a node Ready, grant approval or invoke tools.
 

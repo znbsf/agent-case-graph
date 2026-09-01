@@ -33,7 +33,11 @@ CONTEXT_EDGE_TYPES = {
     "supports",
     "targets",
     "uses",
+    "frames",
+    "informs",
 }
+
+CONTEXT_LINEAGE_NODE_TYPES = {"Action", "Step", "ToolCall", "Plan", "Decision"}
 
 
 def _status(node: dict[str, Any]) -> str:
@@ -191,6 +195,26 @@ def _context_packet(
             include(edge["to"], edge["type"], "outgoing")
         elif edge["to"] == node["id"]:
             include(edge["from"], edge["type"], "incoming")
+
+    lineage_queue = [(node["id"], 0)]
+    lineage_seen = {node["id"]}
+    while lineage_queue:
+        current_id, depth = lineage_queue.pop(0)
+        if depth >= 3:
+            continue
+        for edge in graph["edges"]:
+            if edge["type"] not in CONTEXT_EDGE_TYPES or edge["to"] != current_id:
+                continue
+            source_id = edge["from"]
+            include(source_id, edge["type"], "context_lineage")
+            source = nodes.get(source_id)
+            if (
+                source is not None
+                and source["type"] in CONTEXT_LINEAGE_NODE_TYPES
+                and source_id not in lineage_seen
+            ):
+                lineage_seen.add(source_id)
+                lineage_queue.append((source_id, depth + 1))
 
     for predecessor_id in predecessor_ids:
         include(predecessor_id, "precedes", "incoming")

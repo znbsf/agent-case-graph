@@ -10,7 +10,8 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from .importer import import_issue_events
-from .ledger import append_event, canonical_json, write_new_ledger
+from .inference import infer_workflow
+from .ledger import append_event, atomic_write_text, canonical_json, write_new_ledger
 from .lint import lint_graph
 from .localization import load_display_locales
 from .model import ACGError, SCHEMA_VERSION, load_events
@@ -344,6 +345,19 @@ def _cmd_import_issue(args: argparse.Namespace) -> int:
     return 0
 
 
+def _cmd_infer_workflow(args: argparse.Namespace) -> int:
+    _, graph, _ = _load_project_lint(args.ledger)
+    result = infer_workflow(graph, run_id=args.run_id)
+    rendered = json.dumps(result, ensure_ascii=False, indent=2) + "\n"
+    if args.output:
+        args.output.parent.mkdir(parents=True, exist_ok=True)
+        atomic_write_text(args.output, rendered)
+        print(f"Wrote {args.output}")
+    else:
+        print(rendered, end="")
+    return 1 if args.strict and result["gaps"] else 0
+
+
 def _record_common(args: argparse.Namespace, *, kind: str, payload: dict[str, Any]) -> int:
     event = append_event(
         args.ledger,
@@ -487,6 +501,15 @@ def build_parser() -> argparse.ArgumentParser:
     importer.add_argument("--include", action="append", default=[])
     importer.add_argument("--force", action="store_true")
     importer.set_defaults(func=_cmd_import_issue)
+
+    infer = subparsers.add_parser(
+        "infer-workflow", help="reverse-infer goals, plans, actions, outputs and claims"
+    )
+    infer.add_argument("ledger", type=Path)
+    infer.add_argument("--output", type=Path)
+    infer.add_argument("--run-id", help="select one Run when a graph contains multiple runs")
+    infer.add_argument("--strict", action="store_true", help="fail when semantic gaps remain")
+    infer.set_defaults(func=_cmd_infer_workflow)
 
     record_node = subparsers.add_parser("record-node", help="append a node.recorded event")
     _common_record_args(record_node)

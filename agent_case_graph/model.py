@@ -23,6 +23,10 @@ NODE_TYPES = {
     "ProblemType",
     "Case",
     "Goal",
+    "Plan",
+    "ReasoningSummary",
+    "ToolCall",
+    "ToolOutput",
     "AcceptanceCriterion",
     "Run",
     "Step",
@@ -82,6 +86,8 @@ EDGE_TYPES = {
     "supersedes",
     "deprecated_by",
     "references",
+    "frames",
+    "informs",
 }
 
 CASE_STATES = {

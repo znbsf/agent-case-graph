@@ -10,6 +10,21 @@ from .replay import build_replay_catalog
 from .runtime import build_runtime_catalog
 
 
+def _event_provenance(event: dict[str, Any]) -> dict[str, list[str]]:
+    run_id = event.get("run_id")
+    return {
+        "capture_modes": [event["provenance"]["capture_mode"]],
+        "source_refs": sorted(set(event["provenance"].get("source_refs", []))),
+        "run_ids": [run_id] if isinstance(run_id, str) and run_id else [],
+    }
+
+
+def _merge_provenance(target: dict[str, list[str]], event: dict[str, Any]) -> None:
+    incoming = _event_provenance(event)
+    for key in ("capture_modes", "source_refs", "run_ids"):
+        target[key] = sorted(set(target.get(key, [])) | set(incoming[key]))
+
+
 def project_events(
     events: list[dict[str, Any]],
     *,
@@ -37,6 +52,7 @@ def project_events(
                     "event_ids": [event["event_id"]],
                     "first_sequence": event["sequence"],
                     "last_sequence": event["sequence"],
+                    "provenance": _event_provenance(event),
                 }
             else:
                 if existing["type"] != incoming["type"]:
@@ -47,6 +63,7 @@ def project_events(
                 existing["attrs"].update(incoming.get("attrs", {}))
                 existing["event_ids"].append(event["event_id"])
                 existing["last_sequence"] = event["sequence"]
+                _merge_provenance(existing["provenance"], event)
         elif kind == "edge.recorded":
             incoming = event["edge"]
             edge_id = incoming["id"]
@@ -61,6 +78,7 @@ def project_events(
                     "event_ids": [event["event_id"]],
                     "first_sequence": event["sequence"],
                     "last_sequence": event["sequence"],
+                    "provenance": _event_provenance(event),
                 }
             else:
                 identity = (existing["type"], existing["from"], existing["to"])
@@ -70,6 +88,7 @@ def project_events(
                 existing["attrs"].update(incoming.get("attrs", {}))
                 existing["event_ids"].append(event["event_id"])
                 existing["last_sequence"] = event["sequence"]
+                _merge_provenance(existing["provenance"], event)
         elif kind == "state.changed":
             transition = dict(event["transition"])
             transition.update(

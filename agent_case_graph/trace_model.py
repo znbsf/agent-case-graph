@@ -12,6 +12,7 @@ PHASE_BY_TYPE = {
     "Case": "context",
     "Run": "context",
     "Goal": "context",
+    "ReasoningSummary": "inspect",
     "Input": "context",
     "Evidence": "inspect",
     "Constraint": "context",
@@ -26,6 +27,7 @@ PHASE_BY_TYPE = {
     "Uncertainty": "inspect",
     "Action": "execute",
     "ToolCall": "execute",
+    "ToolOutput": "execute",
     "Artifact": "execute",
     "Verification": "validate",
     "Check": "validate",
@@ -53,6 +55,8 @@ EVIDENCE_TYPES = {
     "Uncertainty",
     "ScopeBoundary",
     "Approval",
+    "ReasoningSummary",
+    "ToolOutput",
 }
 
 # Only forward control/dependency relations may constrain the layered DAG.
@@ -61,14 +65,15 @@ EVIDENCE_TYPES = {
 # sort can create a valid review cycle and collapse the layout to a line.
 LAYOUT_EDGE_TYPES = {
     "has_run",
-    "contains",
     "precedes",
     "implemented_by",
     "targets",
     "invokes",
+    "produces",
     "modifies",
     "satisfies",
     "tested_by",
+    "frames",
 }
 
 
@@ -84,12 +89,24 @@ def _status(node: dict[str, Any]) -> str:
     return str(attrs.get("current_state") or attrs.get("status") or "recorded")
 
 
+def _is_layout_edge(edge: dict[str, Any], node_types: dict[str, str]) -> bool:
+    if edge["type"] not in LAYOUT_EDGE_TYPES:
+        return False
+    if edge["type"] != "produces":
+        return True
+    return edge.get("attrs", {}).get("flow") is True or (
+        node_types.get(edge["from"]) == "ToolCall"
+        and node_types.get(edge["to"]) == "ToolOutput"
+    )
+
+
 def _ranks(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> dict[str, int]:
     ids = {node["id"] for node in nodes}
+    node_types = {node["id"]: node["type"] for node in nodes}
     outgoing: dict[str, list[str]] = defaultdict(list)
     indegree = {node_id: 0 for node_id in ids}
     for edge in edges:
-        if edge["type"] not in LAYOUT_EDGE_TYPES:
+        if not _is_layout_edge(edge, node_types):
             continue
         source, target = edge["from"], edge["to"]
         if source not in ids or target not in ids or source == target:
@@ -135,6 +152,7 @@ def build_trace_model(
                 "tool": attrs.get("action_tool") or attrs.get("tool") or attrs.get("executor"),
                 "output": attrs.get("action_output") or attrs.get("output") or attrs.get("result"),
                 "attrs": attrs,
+                "provenance": node.get("provenance", {}),
                 "event_ids": list(node.get("event_ids", [])),
                 "first_sequence": min(
                     (
@@ -148,14 +166,16 @@ def build_trace_model(
         )
 
     node_ids = {node["id"] for node in nodes}
+    node_types = {node["id"]: node["type"] for node in graph["nodes"]}
     edges = [
         {
             "id": edge["id"],
             "type": edge["type"],
             "from": edge["from"],
             "to": edge["to"],
-            "layout": edge["type"] in LAYOUT_EDGE_TYPES,
+            "layout": _is_layout_edge(edge, node_types),
             "attrs": edge.get("attrs", {}),
+            "provenance": edge.get("provenance", {}),
         }
         for edge in graph["edges"]
         if edge["from"] in node_ids and edge["to"] in node_ids

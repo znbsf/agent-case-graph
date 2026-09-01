@@ -97,6 +97,21 @@ PowerShell 用户可以直接运行仓库根目录的 `acg.ps1`。
 - runtime Ready frontier、Approval scope 和 Checkpoint；
 - visual-only replay，不重新执行工具或副作用。
 
+## 从图反推流程
+
+ACG 可以显式记录 `Goal -> Plan -> ToolCall -> ToolOutput -> Claim`：
+
+- `frames`：Goal 为 Plan 提供上下文和边界；
+- `informs`：新证据或可见 reasoning summary 改变下一版 Plan；
+- `supersedes`：Goal/Plan 的版本修订；
+- `invokes / produces / supports`：计划调用工具、工具产生结果、结果支撑结论。
+
+`infer-workflow` 只读取 canonical graph，反推每版 Plan 的 Goal 上下文、动作、产出和结论，并报告缺失的 Goal/Plan/Output/Evidence 关系。它不读取或恢复隐藏 chain-of-thought。
+
+```bash
+acg infer-workflow examples/quickstart/events.jsonl --output inferred-workflow.json
+```
+
 ## 事实与隐私边界
 
 ```text
@@ -117,6 +132,7 @@ project           生成 PlantUML / HTML / JSON / Lint / receipt
 next-actions      计算 Ready frontier 与阻塞原因
 step-status       追加受门禁保护的 runtime Checkpoint
 import-issue      只读导入历史 Issue
+infer-workflow    仅从 canonical graph 反推 Goal/Plan/Tool/Output/Claim
 record-node       追加节点事件
 record-edge       追加关系事件
 record-state      追加状态变化
