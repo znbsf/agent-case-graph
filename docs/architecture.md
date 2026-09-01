@@ -218,7 +218,7 @@ HTML 工作台用五种任务模式组织同一份事实，而不是生成五份
 Plan 提供两个辅助视图，它们共享 canonical ID、选中状态和详情侧栏：
 
 - Dependency Flow：主画布只显示显式 `precedes` 偏序，Runtime 门禁与主要阻塞由同页检查器呈现；不从布局或记录顺序推断因果。
-- Orthogonal Planes：在 `x/y/z >= 0` 的第一卦限三面角中斜向展示 `XY = State`、`XZ = Control`、`YZ = Action`；X/Y/Z 三条正向共享轴分别表达 State-Control、Action-State、Control-Action 接口。每个节点只属于一个面，跨面线经对应共享轴转接。
+- Orthogonal Cuboid：六个面分工而不是共享轴复用。三个相邻节点面是 `z=0: State`、`y=0: Control`、`x=0: Action`；三个相对线路面是 `x=L: State↔Control`（平行于 Action）、`z=L: Control↔Action`（平行于 State）、`y=L: Action↔State`（平行于 Control）。每个节点只属于一个节点面；同层线留在节点面，跨层线进入唯一对应的线路面，并由只改变一个坐标的正交折线连接。
 
 Unified Drawer 统一承载节点属性、直接关系、来源、原始 JSON 和 Lint；Ledger 逐项检查只在 Plan 的顺序检查器中出现，不再为每种模式复制详情卡片或播放器。
 

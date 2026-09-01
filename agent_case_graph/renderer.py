@@ -484,6 +484,7 @@ button.plan-frontier-item:hover { border-color: var(--accent); }
 .spatial-svg { overflow: visible; }
 .spatial-node-layer { pointer-events: none; }
 .spatial-plane { stroke-width: 1.2; vector-effect: non-scaling-stroke; transition: opacity .18s ease; }
+.spatial-plane.route-face { stroke-width: 1.6; stroke-dasharray: 7 5; }
 .spatial-axis { fill: none; stroke-width: 2; vector-effect: non-scaling-stroke; }
 .spatial-origin { fill: var(--surface-raised); stroke: var(--accent); stroke-width: 2.5; vector-effect: non-scaling-stroke; }
 .spatial-axis-label { font-size: 10px; font-weight: 800; paint-order: stroke; stroke: var(--canvas); stroke-width: 3px; }
@@ -1082,7 +1083,7 @@ const UI = {
     tabReview: "复盘",
     tabEvidence: "证据",
     planViewFlow: "依赖主图",
-    planViewOrthogonal: "辅助 · 正交空间",
+    planViewOrthogonal: "辅助 · 六面体正交空间",
     overviewTitle: "三层闭环工作台",
     overviewSubtitle: "状态证据提供上下文，控制策略选择下一步，行动接口改变环境；结果再回流为新证据。",
     runTitle: "运行前沿",
@@ -1133,8 +1134,8 @@ const UI = {
     evidenceNoPaths: "当前 Case 没有可展示的显式证据路径",
     flowTitle: "显式计划依赖",
     flowSubtitle: "主画布只显示 Run 的任务节点与 precedes 约束；依赖层级不代表真实执行顺序或耗时。",
-    orthogonalTitle: "三张正交语义面",
-    orthogonalSubtitle: "第一卦限三面角：XY 是 State / Evidence，XZ 是 Control / Policy，YZ 是 Action / Interface；节点严格落面，跨面关系经共享轴路由。",
+    orthogonalTitle: "六面体正交路由",
+    orthogonalSubtitle: "三个相邻面只放 State / Control / Action 节点，三个相对面只走跨层线路：S↔C ∥ A，C↔A ∥ S，A↔S ∥ C。",
     latestRun: "最新 Run 快照",
     layerAll: "全部",
     loopKnowledge: "State 状态",
@@ -1268,7 +1269,7 @@ const UI = {
     tabReview: "Review",
     tabEvidence: "Evidence",
     planViewFlow: "Primary dependency graph",
-    planViewOrthogonal: "Aux · orthogonal space",
+    planViewOrthogonal: "Aux · orthogonal cuboid",
     overviewTitle: "Three-layer closed-loop workbench",
     overviewSubtitle: "State and evidence provide context, control and policy select the next step, and actions change the environment before results return as evidence.",
     runTitle: "Runtime frontier",
@@ -1319,8 +1320,8 @@ const UI = {
     evidenceNoPaths: "This Case has no explicit evidence path to display",
     flowTitle: "Explicit plan dependencies",
     flowSubtitle: "The primary canvas shows only Run task nodes and precedes constraints; dependency levels do not claim actual execution order or duration.",
-    orthogonalTitle: "Three orthogonal semantic planes",
-    orthogonalSubtitle: "Positive-octant trihedral view: XY is State / Evidence, XZ is Control / Policy, and YZ is Action / Interface. Nodes stay on one plane and cross-plane relations route through shared axes.",
+    orthogonalTitle: "Orthogonal cuboid routing",
+    orthogonalSubtitle: "Three adjacent faces contain State / Control / Action nodes; three opposite faces carry cross-layer routes: S↔C ∥ A, C↔A ∥ S, and A↔S ∥ C.",
     latestRun: "Latest Run snapshot",
     layerAll: "All",
     loopKnowledge: "State",
@@ -2632,8 +2633,7 @@ function spatialSceneCenter() {
   if (spatialLayer === "state") return {x: half, y: half, z: 0};
   if (spatialLayer === "control") return {x: half, y: 0, z: half};
   if (spatialLayer === "action") return {x: 0, y: half, z: half};
-  const trihedralCenter = ORTHOGONAL_SIZE / 3;
-  return {x: trihedralCenter, y: trihedralCenter, z: trihedralCenter};
+  return {x: half, y: half, z: half};
 }
 function projectSpatialPoint(point, width, height) {
   const center = spatialSceneCenter();
@@ -2691,10 +2691,14 @@ function svgElement(name, attrs) {
 }
 function spatialPlaneDefinitions() {
   const size = ORTHOGONAL_SIZE;
+  const chinese = currentLocale === "zh-CN";
   return [
-    {layer: "state", label: "XY · State / Evidence", points: [{x:0,y:0,z:0},{x:size,y:0,z:0},{x:size,y:size,z:0},{x:0,y:size,z:0}]},
-    {layer: "control", label: "XZ · Control / Policy", points: [{x:0,y:0,z:0},{x:size,y:0,z:0},{x:size,y:0,z:size},{x:0,y:0,z:size}]},
-    {layer: "action", label: "YZ · Action / Interface", points: [{x:0,y:0,z:0},{x:0,y:size,z:0},{x:0,y:size,z:size},{x:0,y:0,z:size}]}
+    {kind: "node", layer: "state", label: chinese ? "XY · State · 节点面" : "XY · State · NODE", points: [{x:0,y:0,z:0},{x:size,y:0,z:0},{x:size,y:size,z:0},{x:0,y:size,z:0}]},
+    {kind: "node", layer: "control", label: chinese ? "XZ · Control · 节点面" : "XZ · Control · NODE", points: [{x:0,y:0,z:0},{x:size,y:0,z:0},{x:size,y:0,z:size},{x:0,y:0,z:size}]},
+    {kind: "node", layer: "action", label: chinese ? "YZ · Action · 节点面" : "YZ · Action · NODE", points: [{x:0,y:0,z:0},{x:0,y:size,z:0},{x:0,y:size,z:size},{x:0,y:0,z:size}]},
+    {kind: "route", interface: "state-control", parallelLayer: "action", label: chinese ? "YZ · S↔C · 线路面 ∥ A" : "YZ · S↔C · ROUTE ∥ A", points: [{x:size,y:0,z:0},{x:size,y:size,z:0},{x:size,y:size,z:size},{x:size,y:0,z:size}]},
+    {kind: "route", interface: "control-action", parallelLayer: "state", label: chinese ? "XY · C↔A · 线路面 ∥ S" : "XY · C↔A · ROUTE ∥ S", points: [{x:0,y:0,z:size},{x:size,y:0,z:size},{x:size,y:size,z:size},{x:0,y:size,z:size}]},
+    {kind: "route", interface: "action-state", parallelLayer: "control", label: chinese ? "XZ · A↔S · 线路面 ∥ C" : "XZ · A↔S · ROUTE ∥ C", points: [{x:0,y:size,z:0},{x:size,y:size,z:0},{x:size,y:size,z:size},{x:0,y:size,z:size}]}
   ];
 }
 function chooseSpatialInstance(instances, nodeId, flowKind) {
@@ -2706,7 +2710,21 @@ function chooseSpatialInstance(instances, nodeId, flowKind) {
     return score(right) - score(left) || left.key.localeCompare(right.key);
   })[0];
 }
-function spatialOrthogonalRoute(fromInstance, toInstance) {
+function spatialLayerPairKind(fromLayer, toLayer) {
+  const pair = new Set([fromLayer, toLayer]);
+  if (pair.has("state") && pair.has("control")) return "state-control";
+  if (pair.has("control") && pair.has("action")) return "control-action";
+  if (pair.has("action") && pair.has("state")) return "action-state";
+  return fromLayer;
+}
+function compactSpatialRoute(points) {
+  return points.filter(function (point, index) {
+    if (!index) return true;
+    const previous = points[index - 1];
+    return point.x !== previous.x || point.y !== previous.y || point.z !== previous.z;
+  });
+}
+function spatialOrthogonalRoute(fromInstance, toInstance, lane) {
   const from = fromInstance.point;
   const to = toInstance.point;
   const fromLayer = fromInstance.displayLayer;
@@ -2714,33 +2732,35 @@ function spatialOrthogonalRoute(fromInstance, toInstance) {
   if (fromLayer === toLayer) {
     if (fromLayer === "state") {
       const midX = (from.x + to.x) / 2;
-      return [from, {x: midX, y: from.y, z: 0}, {x: midX, y: to.y, z: 0}, to];
+      return compactSpatialRoute([from, {x: midX, y: from.y, z: 0}, {x: midX, y: to.y, z: 0}, to]);
     }
     if (fromLayer === "control") {
       const midX = (from.x + to.x) / 2;
-      return [from, {x: midX, y: 0, z: from.z}, {x: midX, y: 0, z: to.z}, to];
+      return compactSpatialRoute([from, {x: midX, y: 0, z: from.z}, {x: midX, y: 0, z: to.z}, to]);
     }
     const midY = (from.y + to.y) / 2;
-    return [from, {x: 0, y: midY, z: from.z}, {x: 0, y: midY, z: to.z}, to];
+    return compactSpatialRoute([from, {x: 0, y: midY, z: from.z}, {x: 0, y: midY, z: to.z}, to]);
   }
+  const size = ORTHOGONAL_SIZE;
+  const routeLane = lane == null ? size / 2 : lane;
   const pair = new Set([fromLayer, toLayer]);
   let route;
   if (pair.has("state") && pair.has("control")) {
     const statePoint = fromLayer === "state" ? from : to;
     const controlPoint = fromLayer === "control" ? from : to;
-    route = [statePoint, {x: statePoint.x, y: 0, z: 0}, {x: controlPoint.x, y: 0, z: 0}, controlPoint];
-    return fromLayer === "state" ? route : route.reverse();
+    route = [statePoint, {x:size,y:statePoint.y,z:0}, {x:size,y:routeLane,z:0}, {x:size,y:routeLane,z:controlPoint.z}, {x:size,y:0,z:controlPoint.z}, controlPoint];
+    return compactSpatialRoute(fromLayer === "state" ? route : route.reverse());
   }
   if (pair.has("state") && pair.has("action")) {
     const statePoint = fromLayer === "state" ? from : to;
     const actionPoint = fromLayer === "action" ? from : to;
-    route = [statePoint, {x: 0, y: statePoint.y, z: 0}, {x: 0, y: actionPoint.y, z: 0}, actionPoint];
-    return fromLayer === "state" ? route : route.reverse();
+    route = [actionPoint, {x:0,y:size,z:actionPoint.z}, {x:routeLane,y:size,z:actionPoint.z}, {x:routeLane,y:size,z:0}, {x:statePoint.x,y:size,z:0}, statePoint];
+    return compactSpatialRoute(fromLayer === "action" ? route : route.reverse());
   }
   const controlPoint = fromLayer === "control" ? from : to;
   const actionPoint = fromLayer === "action" ? from : to;
-  route = [controlPoint, {x: 0, y: 0, z: controlPoint.z}, {x: 0, y: 0, z: actionPoint.z}, actionPoint];
-  return fromLayer === "control" ? route : route.reverse();
+  route = [controlPoint, {x:controlPoint.x,y:0,z:size}, {x:controlPoint.x,y:routeLane,z:size}, {x:0,y:routeLane,z:size}, {x:0,y:actionPoint.y,z:size}, actionPoint];
+  return compactSpatialRoute(fromLayer === "control" ? route : route.reverse());
 }
 function resetSpatialCamera() {
   if (spatialMode === "flow") {
@@ -2878,7 +2898,7 @@ function renderSpatial() {
   const nodeLayer = document.getElementById("spatialNodeLayer");
   document.getElementById("planWorkbench").dataset.planView = spatialMode;
   stage.dataset.viewMode = spatialMode;
-  stage.dataset.coordinateDomain = spatialMode === "flow" ? "explicit-precedes-rank;vertical-branch-avoidance" : "x>=0;y>=0;z>=0;strict-primary-plane;axis-routed";
+  stage.dataset.coordinateDomain = spatialMode === "flow" ? "explicit-precedes-rank;vertical-branch-avoidance" : "cuboid;node-faces:x=0|y=0|z=0;route-faces:x=L|y=L|z=L;orthogonal-segments";
   stage.dataset.camera = "yaw=" + spatialCamera.yaw + ";pitch=" + spatialCamera.pitch + ";scale=" + spatialCamera.scale;
   const viewportWidth = Math.max(320, stage.clientWidth || 1200);
   const viewportHeight = Math.max(spatialMode === "flow" ? 330 : 460, stage.clientHeight || (spatialMode === "flow" ? 350 : 560));
@@ -2921,16 +2941,20 @@ function renderSpatial() {
 
   appendSpatialArrowMarker(svg);
 
-  const visiblePlanes = spatialPlaneDefinitions().filter(function (plane) { return spatialLayer === "all" || plane.layer === spatialLayer; });
+  const visiblePlanes = spatialPlaneDefinitions().filter(function (plane) { return spatialLayer === "all" || (plane.kind === "node" && plane.layer === spatialLayer); });
   visiblePlanes.map(function (plane) {
     const points = plane.points.map(function (point) { return projectSpatialPoint(point, width, height); });
     return {plane: plane, points: points, depth: points.reduce(function (sum, point) { return sum + point.depth; }, 0) / points.length};
   }).sort(function (left, right) { return left.depth - right.depth; }).forEach(function (entry) {
-    const color = SPATIAL_LAYER_COLORS[entry.plane.layer];
-    const polygon = svgElement("polygon", {class: "spatial-plane", points: entry.points.map(function (point) { return point.x.toFixed(1) + "," + point.y.toFixed(1); }).join(" ")});
-    polygon.dataset.layer = entry.plane.layer;
+    const color = entry.plane.kind === "node" ? SPATIAL_LAYER_COLORS[entry.plane.layer] : SPATIAL_FLOW_COLORS[entry.plane.interface];
+    const polygon = svgElement("polygon", {class: "spatial-plane " + entry.plane.kind + "-face", points: entry.points.map(function (point) { return point.x.toFixed(1) + "," + point.y.toFixed(1); }).join(" ")});
+    polygon.dataset.faceKind = entry.plane.kind;
+    if (entry.plane.layer) polygon.dataset.layer = entry.plane.layer;
+    if (entry.plane.interface) polygon.dataset.interface = entry.plane.interface;
+    if (entry.plane.parallelLayer) polygon.dataset.parallelLayer = entry.plane.parallelLayer;
     polygon.dataset.modelPoints = entry.plane.points.map(function (point) { return point.x + "," + point.y + "," + point.z; }).join(";");
-    polygon.setAttribute("style", "fill:color-mix(in srgb," + color + " 7%,transparent);stroke:color-mix(in srgb," + color + " 55%,transparent)");
+    const fillStrength = entry.plane.kind === "node" ? "7%" : "3%";
+    polygon.setAttribute("style", "fill:color-mix(in srgb," + color + " " + fillStrength + ",transparent);stroke:color-mix(in srgb," + color + " 55%,transparent)");
     svg.appendChild(polygon);
     const anchor = entry.points[2];
     const label = svgElement("text", {class: "spatial-axis-label", x: anchor.x - 8, y: anchor.y - 9, fill: color, "text-anchor": "end"});
@@ -2940,7 +2964,7 @@ function renderSpatial() {
 
   if (spatialMode === "orthogonal" && spatialLayer === "all") {
     const axisEnd = ORTHOGONAL_SIZE + 30;
-    [[{x:0,y:0,z:0},{x:axisEnd,y:0,z:0},"X+ · S↔C"],[{x:0,y:0,z:0},{x:0,y:axisEnd,z:0},"Y+ · A↔S"],[{x:0,y:0,z:0},{x:0,y:0,z:axisEnd},"Z+ · C↔A"]].forEach(function (axis) {
+    [[{x:0,y:0,z:0},{x:axisEnd,y:0,z:0},"X+"],[{x:0,y:0,z:0},{x:0,y:axisEnd,z:0},"Y+"],[{x:0,y:0,z:0},{x:0,y:0,z:axisEnd},"Z+"]].forEach(function (axis) {
       const from = projectSpatialPoint(axis[0], width, height);
       const to = projectSpatialPoint(axis[1], width, height);
       const line = svgElement("line", {class: "spatial-axis", x1: from.x, y1: from.y, x2: to.x, y2: to.y, stroke: "var(--edge)"});
@@ -2960,15 +2984,36 @@ function renderSpatial() {
 
   const relationMode = document.getElementById("relationFilter").value;
   const related = selectedId ? adjacentIds(selectedId) : null;
-  spatialCatalogRelations().filter(function (relation) {
+  const routedRelations = spatialCatalogRelations().filter(function (relation) {
     if (!spatialRenderState.visibleIds.has(relation.from) || !spatialRenderState.visibleIds.has(relation.to)) return false;
     return relationMode === "all" || primaryEdgeTypes.has(relation.type) || (relation.type === "contains" && relation.from === (snapshot && snapshot.run_id));
-  }).forEach(function (relation, index) {
+  }).map(function (relation) {
     const flowKind = relation.flow_kind || (primaryEdgeTypes.has(relation.type) ? "control" : "state");
     const fromInstance = chooseSpatialInstance(instances, relation.from, flowKind);
     const toInstance = chooseSpatialInstance(instances, relation.to, flowKind);
-    if (!fromInstance || !toInstance || fromInstance.key === toInstance.key) return;
-    const modelRoute = spatialOrthogonalRoute(fromInstance, toInstance);
+    if (!fromInstance || !toInstance || fromInstance.key === toInstance.key) return null;
+    return {relation: relation, flowKind: flowKind, fromInstance: fromInstance, toInstance: toInstance, routeKind: spatialLayerPairKind(fromInstance.displayLayer, toInstance.displayLayer)};
+  }).filter(Boolean);
+  const laneGroups = new Map();
+  routedRelations.forEach(function (item) {
+    if (item.fromInstance.displayLayer === item.toInstance.displayLayer) return;
+    if (!laneGroups.has(item.routeKind)) laneGroups.set(item.routeKind, []);
+    laneGroups.get(item.routeKind).push(item);
+  });
+  const relationLanes = new Map();
+  laneGroups.forEach(function (items) {
+    items.sort(function (left, right) { return left.relation.id.localeCompare(right.relation.id); });
+    const usable = ORTHOGONAL_SIZE - ORTHOGONAL_INSET * 2;
+    items.forEach(function (item, index) {
+      relationLanes.set(item.relation.id, ORTHOGONAL_INSET + (index + 1) * usable / (items.length + 1));
+    });
+  });
+  routedRelations.forEach(function (item) {
+    const relation = item.relation;
+    const flowKind = item.flowKind;
+    const fromInstance = item.fromInstance;
+    const toInstance = item.toInstance;
+    const modelRoute = spatialOrthogonalRoute(fromInstance, toInstance, relationLanes.get(relation.id));
     const pathText = modelRoute.map(function (point, routeIndex) {
       const screen = projectSpatialPoint(point, width, height);
       return (routeIndex ? "L " : "M ") + screen.x.toFixed(1) + " " + screen.y.toFixed(1);
@@ -2981,6 +3026,7 @@ function renderSpatial() {
     path.dataset.modelRoute = modelRoute.map(function (point) { return point.x + "," + point.y + "," + point.z; }).join(";");
     path.dataset.fromLayer = fromInstance.displayLayer;
     path.dataset.toLayer = toInstance.displayLayer;
+    path.dataset.routeFace = fromInstance.displayLayer === toInstance.displayLayer ? fromInstance.displayLayer : item.routeKind;
     path.appendChild(document.createElementNS("http://www.w3.org/2000/svg", "title")).textContent = edgeTypeLabel(relation.type) + ": " + relation.from + " → " + relation.to;
     svg.appendChild(path);
     const replayParticle = replayState.active && replayState.currentEdgeIds.has(relation.id) && replayState.mode === "observed" && hasObservedExecutionTrack(snapshot);

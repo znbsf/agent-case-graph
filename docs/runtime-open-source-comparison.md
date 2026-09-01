@@ -51,7 +51,7 @@ ACG 不把所有职责塞进一张无限扩张的 Canvas，也不为每个模式
 Plan 再提供两个互补的辅助视图：
 
 - **Dependency Flow**：主画布用显式 `precedes` 解释计划偏序，Runtime 门禁与主要阻塞由同页检查器呈现。
-- **Orthogonal Planes**：`XY State / XZ Control / YZ Action`，节点严格在一个面上，跨面关系经共享正轴转接。
+- **Orthogonal Cuboid**：三个相邻面严格承载 `State / Control / Action` 节点，三个相对面分别承载 `S↔C / C↔A / A↔S` 跨层线路；线路面与未参与该接口的节点面平行，所有折线段只改变一个坐标。
 
 四条顺序轨道保持语义分离：Ledger 记录回答“写入顺序”，计划依赖回答“约束顺序”，候选调度回答“可行顺序”，已观测执行回答“executor 实际顺序”。只有最后一条接受 execution telemetry；缺失时显示 unavailable 且不动画。统一详情侧栏承载节点属性、直接关系、来源、raw JSON 与 Lint；逐项顺序检查只在 Plan 中出现。
 

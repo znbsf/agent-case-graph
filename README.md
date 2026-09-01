@@ -45,7 +45,7 @@ Canonical typed graph
 规划页包含两个互补的辅助视图：
 
 - **依赖图**：主画布只用显式 `precedes` 解释计划偏序；当前 Runtime 门禁与主要阻塞在同页检查器中显示。
-- **正交三面**：在 `x/y/z >= 0` 的第一卦限中斜向展示 `XY = State / XZ = Control / YZ = Action`；节点严格位于一个面上，跨面关系经共享正轴转接。
+- **六面体正交空间**：三个相邻面是互斥节点面（`z=0: State`、`y=0: Control`、`x=0: Action`），三个相对面是跨层线路面（`x=L: S↔C`、`z=L: C↔A`、`y=L: A↔S`）。节点不离开自己的面，跨层关系进入对应的平行线路面并全程按单轴折线流动。
 
 五种模式共享同一份 canonical graph、Run 选择和详情侧栏，不复制事实，也不让页面位置成为因果。HTML 由原生 SVG、HTML 和 JavaScript 组成，自包含、无 CDN，可以离线直接打开。
 
