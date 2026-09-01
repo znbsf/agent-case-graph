@@ -8,7 +8,6 @@ from .ledger import sha256_file
 from .model import ACGError, SCHEMA_VERSION
 from .replay import build_replay_catalog
 from .runtime import build_runtime_catalog
-from .spatial import build_spatial_catalog
 
 
 def project_events(
@@ -116,6 +115,5 @@ def project_events(
         },
     }
     graph["runtime"] = build_runtime_catalog(graph)
-    graph["spatial"] = build_spatial_catalog(graph)
     graph["replay"] = build_replay_catalog(graph, events)
     return graph

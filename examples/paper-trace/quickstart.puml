@@ -1,0 +1,51 @@
+@startuml
+' Generated from the same paper-trace model as graph.html
+top to bottom direction
+skinparam backgroundColor #F8FAFC
+skinparam shadowing false
+skinparam roundCorner 10
+skinparam defaultFontName Arial
+skinparam ArrowColor #64748B
+skinparam ArrowThickness 1
+skinparam rectangleBorderColor #64748B
+skinparam rectangleFontColor #172033
+skinparam rectangleFontSize 11
+skinparam linetype polyline
+hide stereotype
+title Agent workflow trace — layered DAG
+rectangle "<b>Explain and safely advance an agent task</b>\n<size:9>CONTEXT · Case · execute</size>" as n0_case_DEMO_001 #dbeafe
+rectangle "<b>Quickstart paper-trace run</b>\n<size:9>CONTEXT · Run · running</size>" as n1_run_DEMO_001_001 #dbeafe
+rectangle "<b>Make evidence, control and execution easy to inspect</b>\n<size:9>CONTEXT · Goal · recorded</size>" as n2_goal_DEMO_001_clarity #dbeafe
+rectangle "<b>Agent work mixes facts, decisions and runtime state</b>\n<size:9>INSPECT · Observation · confirmed</size>" as n3_ervation_DEMO_001_separation #ede9fe
+rectangle "<b>One canonical graph can support multiple readable projections</b>\n<size:9>CLAIM · Claim · confirmed</size>" as n4_claim_DEMO_001_canonical #fce7f3
+rectangle "<b>Use one trace model for PlantUML and interactive HTML</b>\n<size:9>PLAN · Decision · accepted</size>" as n5_decision_DEMO_001_two_views #e0e7ff
+rectangle "<b>Inspect the evidence and explicit dependencies</b>\n<size:9>INSPECT · Step · completed</size>" as n6_step_DEMO_001_inspect #ede9fe
+rectangle "<b>Select the next safe action from the graph</b>\n<size:9>EXECUTE · Action · running</size>" as n7_action_DEMO_001_select #ffedd5
+rectangle "<b>Verify the selected action and its evidence path</b>\n<size:9>VALIDATE · Verification · pending</size>" as n8_verification_DEMO_001_review #dcfce7
+rectangle "<b>Every action has an explicit source, destination and verification path</b>\n<size:9>VALIDATE · AcceptanceCriterion · pending</size>" as n9_criterion_DEMO_001_traceable #dcfce7
+n0_case_DEMO_001 -[#CBD5E1]-> n1_run_DEMO_001_001
+n1_run_DEMO_001_001 -[#CBD5E1]-> n2_goal_DEMO_001_clarity
+n1_run_DEMO_001_001 -[#CBD5E1]-> n3_ervation_DEMO_001_separation
+n1_run_DEMO_001_001 -[#CBD5E1]-> n4_claim_DEMO_001_canonical
+n1_run_DEMO_001_001 -[#CBD5E1]-> n5_decision_DEMO_001_two_views
+n1_run_DEMO_001_001 -[#CBD5E1]-> n6_step_DEMO_001_inspect
+n1_run_DEMO_001_001 -[#CBD5E1]-> n7_action_DEMO_001_select
+n1_run_DEMO_001_001 -[#CBD5E1]-> n8_verification_DEMO_001_review
+n1_run_DEMO_001_001 -[#CBD5E1]-> n9_criterion_DEMO_001_traceable
+n3_ervation_DEMO_001_separation ..> n4_claim_DEMO_001_canonical : supports
+n4_claim_DEMO_001_canonical ..> n5_decision_DEMO_001_two_views : explains
+n5_decision_DEMO_001_two_views --> n7_action_DEMO_001_select : implemented_by
+n6_step_DEMO_001_inspect --> n7_action_DEMO_001_select : precedes
+n7_action_DEMO_001_select --> n8_verification_DEMO_001_review : precedes
+n8_verification_DEMO_001_review ..> n9_criterion_DEMO_001_traceable : checks
+legend left
+  |= Color |= Workflow phase |
+  |<#DBEAFE> | Context |
+  |<#E0E7FF> | Plan |
+  |<#EDE9FE> | Inspect |
+  |<#FFEDD5> | Execute |
+  |<#DCFCE7> | Validate |
+  |<#FCE7F3> | Claim |
+  Solid = workflow/dependency; dotted = evidence/provenance
+endlegend
+@enduml

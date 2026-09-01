@@ -441,7 +441,7 @@ def build_parser() -> argparse.ArgumentParser:
     lint.add_argument("--strict", action="store_true", help="treat warnings as failure")
     lint.set_defaults(func=_cmd_lint)
 
-    project = subparsers.add_parser("project", help="generate JSON, Mermaid, HTML and receipt")
+    project = subparsers.add_parser("project", help="generate JSON, PlantUML, HTML and receipt")
     project.add_argument("ledger", type=Path)
     project.add_argument("--out-dir", required=True, type=Path)
     project.add_argument("--title")
