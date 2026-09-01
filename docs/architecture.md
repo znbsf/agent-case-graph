@@ -48,6 +48,24 @@ Containment is drawn only to branch roots rather than repeated beside every
 flow edge. Large ranks wrap after three cards without changing their canonical
 rank.
 
+Within one rank, horizontal order is display-only. The HTML renderer performs
+six top-down/bottom-up neighbor-median sweeps, then uses the node's first source
+sequence and stable ID as tie-breakers. This reduces crossings without turning
+source order into a causal edge.
+
+The HTML router assigns separate source and target ports for fan-out and
+fan-in. Adjacent forward edges use bottom-to-top curves; reverse relations use
+top-to-bottom curves; same-rank relations use row-external lanes. When one
+canonical rank wraps across visual rows, or an edge spans more than one visual
+row, the route uses a side channel so it does not pass through intermediate
+cards. These route classes are display metadata only and never rewrite edge
+direction, type, or canonical rank.
+
+The Evidence tab deliberately expands one authored evidence hop from nodes
+marked as evidence. That neighborhood is computed from a fixed seed set, so it
+is deterministic without pulling an entire connected component into a single
+review view.
+
 ## 4. Relation policy
 
 Only authored canonical edges are rendered.

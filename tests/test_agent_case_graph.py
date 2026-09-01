@@ -42,10 +42,12 @@ class AgentCaseGraphTests(unittest.TestCase):
         self.assertEqual(len(events), len(model["trace"]))
         self.assertTrue(model["principles"]["source_records_preserved"])
         self.assertEqual("claim-to-evidence", model["principles"]["review_direction"])
+        self.assertIn("neighbor median", model["principles"]["parallel_order"])
         self.assertFalse(model["principles"]["position_is_semantic"])
         self.assertEqual(sorted(LAYOUT_EDGE_TYPES), model["principles"]["layout_edge_types"])
         self.assertEqual("workflow + forward-layout endpoints", model["principles"]["primary_node_policy"])
         self.assertTrue(set(PHASE_ORDER).issubset({node["phase"] for node in model["nodes"]}))
+        self.assertTrue(all(node["first_sequence"] is not None for node in model["nodes"]))
 
     def test_review_cycles_do_not_collapse_workflow_layout_to_a_line(self) -> None:
         nodes = [
@@ -182,6 +184,12 @@ class AgentCaseGraphTests(unittest.TestCase):
         write_projection(out, graph=graph, events=events, findings=[], title="Wide rank")
         html = (out / "graph.html").read_text(encoding="utf-8")
         self.assertIn("maxColumns=3", html)
+        self.assertIn("crossingReducedRanks", html)
+        self.assertIn("function routedEdges", html)
+        self.assertIn('"data-from":edge.from', html)
+        self.assertIn('"data-route":item.displayRoute', html)
+        self.assertIn('displayRoute="side-same-rank"', html)
+        self.assertIn("evidenceLinks=MODEL.edges.filter", html)
         self.assertIn("contentWidth=80+maxAcross*cardW+(maxAcross-1)*minGap", html)
         self.assertIn("overflow:auto", html)
 

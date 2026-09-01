@@ -119,6 +119,7 @@ def build_trace_model(
     graph: dict[str, Any], events: list[dict[str, Any]]
 ) -> dict[str, Any]:
     ranks = _ranks(graph["nodes"], graph["edges"])
+    event_sequence = {event["event_id"]: event["sequence"] for event in events}
     nodes = []
     for node in graph["nodes"]:
         attrs = node.get("attrs", {})
@@ -135,6 +136,14 @@ def build_trace_model(
                 "output": attrs.get("action_output") or attrs.get("output") or attrs.get("result"),
                 "attrs": attrs,
                 "event_ids": list(node.get("event_ids", [])),
+                "first_sequence": min(
+                    (
+                        event_sequence[event_id]
+                        for event_id in node.get("event_ids", [])
+                        if event_id in event_sequence
+                    ),
+                    default=None,
+                ),
             }
         )
 
@@ -193,6 +202,7 @@ def build_trace_model(
             "layout": "layered-top-down-dag",
             "layout_edge_types": sorted(LAYOUT_EDGE_TYPES),
             "primary_node_policy": "workflow + forward-layout endpoints",
+            "parallel_order": "neighbor median + first source sequence + stable id",
             "review_direction": "claim-to-evidence",
             "source_records_preserved": True,
             "position_is_semantic": False,
