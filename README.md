@@ -9,7 +9,8 @@
 Agent Case Graph（ACG）把 Agent 的操作、证据、产物和结论先保存为 append-only JSONL，再投影为同一个 `paper-trace-0.1` 模型：
 
 - `trace.puml`：可评审、可版本比较的 PlantUML 静态基准图；
-- `graph.html`：自包含三栏工作台，支持 Workflow / Evidence / Trace 下钻；
+- `graph.html`：自包含三栏工作台，支持 Loop Overview / Workflow / Evidence / Trace 下钻；
+- `loop-model.json`：由 canonical graph 派生的双循环聚合索引；
 - `trace-model.json`：两种渲染器共享的唯一展示契约；
 - `graph.json`：完整 canonical typed graph。
 
@@ -44,8 +45,8 @@ Canonical Graph
   stable IDs · typed nodes/edges · lint · runtime gates
         |
         v
-paper-trace-0.1
-  Workflow Phase · Evidence Node · Trace Record
+paper-trace-0.1 + loop-projection-0.1
+  Dialogue Round · Execution Iteration · Workflow Phase · Evidence · Trace
         |
         +--> trace.puml
         +--> graph.html
@@ -80,13 +81,25 @@ acg project examples/quickstart/events.jsonl \
 
 PowerShell 用户可以直接运行仓库根目录的 `acg.ps1`。
 
-## HTML 只保留三个粒度
+## HTML 的四个粒度
 
-- **Workflow**：六阶段自上而下 DAG，快速理解分支和汇聚。
+- **Loop Overview**：把外层用户对话轮次与内层 Agent 执行迭代分开显示；点击聚合点可查看成员并展开。
+- **Workflow**：六阶段自上而下 DAG，查看 Goal / Plan / ToolCall / Output 的完整流程。
 - **Evidence**：只保留可审计节点及 evidence/provenance 关系，从 Claim 反查支持链。
 - **Trace**：按 Ledger `sequence` 显示原始记录；顺序不是因果。
 
 三栏固定职责：左侧原始 Trace，中间 DAG，右侧选中节点的属性、工具、产出、上下游关系和源记录。
+
+## 双循环与图化简
+
+```text
+DialogueRound (外层：用户输入/反馈 -> Goal 修订 -> AgentResponse)
+  └─ ExecutionIteration (内层：Plan -> ToolCall -> ToolOutput -> Evaluation)
+```
+
+`contains` 只声明作用域，不声明因果；同层先后仍必须使用显式 `precedes`。聚合点只存在于 projection，不会写回 Ledger。每个聚合点保存 `member_ids / internal_edge_ids / cycle_edge_ids`，跨组边保存原始 edge ID、端点和 provenance。未归组节点与边显式列在 `unmapped_node_ids / unmapped_edge_ids`，因此化简不会冒充事实删除。
+
+没有 `UserFeedback` 或父子 `contains` 证据时，Plan fallback 只叫 display/execution span，不声称它就是一次真实用户对话。`accepted` 缺失时，首轮是否成功始终为 unknown。
 
 ## 底层能力保留
 

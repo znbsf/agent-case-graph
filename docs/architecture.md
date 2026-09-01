@@ -5,7 +5,7 @@
 ACG is an evidence-first trace protocol, not a drawing engine. The durable layer records what happened and what relations were explicitly declared. Rendering remains replaceable.
 
 ```text
-Event Ledger -> Canonical Graph -> paper-trace-0.1 -> PlantUML / HTML
+Event Ledger -> Canonical Graph -> paper-trace-0.1 -> loop-projection-0.1 -> PlantUML / HTML
 ```
 
 ## 2. Durable layer
@@ -39,7 +39,25 @@ Trace Record
   sequence + event kind + actor + capture mode + source refs
 ```
 
-The three levels follow the review hierarchy used by LEDGER: raw records remain available, related work is inspectable as evidence, and the default graph is compressed into workflow phases.
+The review hierarchy keeps raw records available, makes evidence inspectable, and adds a derived nested-loop overview above workflow phases.
+
+```text
+DialogueRound (outer conversation loop)
+  └─ ExecutionIteration (inner agent execution loop)
+       └─ canonical Goal / Plan / ToolCall / ToolOutput / Evaluation nodes
+```
+
+`DialogueRound`, `ExecutionIteration`, `UserFeedback`, `AgentResponse`, and
+`Evaluation` may be recorded as canonical nodes. Their parent scope is declared
+only by `contains`; their causal order still requires authored edges.
+`Aggregate` is never a canonical node type. It exists only inside the derived
+`loop-model.json`/HTML model.
+
+The loop projection is non-mutating. It preserves member node IDs, internal and
+cycle edge IDs, cross-group raw endpoints and provenance. Nodes or edges that
+cannot be assigned are reported explicitly as unmapped. Missing dialogue input
+evidence produces a display fallback, not a claimed user turn. Acceptance and
+first-attempt success remain unknown without an explicit accepted signal.
 
 The Workflow tab is a deliberate projection: it includes workflow nodes plus
 evidence nodes that participate in a forward layout edge. Other evidence is
@@ -112,7 +130,7 @@ artifact preview.
 `graph.html` is a self-contained linked view:
 
 - left: source Trace Records;
-- center: Workflow / Evidence / Trace;
+- center: Loop Overview / Workflow / Evidence / Trace;
 - right: selected node details and relations;
 - selection highlights direct audit neighbors;
 - locale bundles alter display labels only.

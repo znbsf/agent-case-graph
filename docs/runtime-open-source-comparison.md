@@ -33,7 +33,7 @@ Its workflow categories are `context / plan / inspect / execute / validate / cla
 ## Minimal visual grammar
 
 1. One node is one reviewable work unit.
-2. Default to Workflow phases; drill down to Evidence and Trace.
+2. Default to a nested-loop overview when explicit dialogue/execution scopes exist; drill down to Workflow, Evidence and Trace.
 3. Use a top-down DAG with explicit branch and merge.
 4. Keep node text short; move tool input/output and source records to details.
 5. Distinguish actions, artifacts, validations and claims.
@@ -51,9 +51,9 @@ Its workflow categories are `context / plan / inspect / execute / validate / cla
 | Branch, merge, relation label | Yes | Yes |
 | Deterministic diff | Strong | Generated artifact only |
 | Node selection and linked details | No | Yes |
-| Workflow / Evidence / Trace switch | No | Yes |
+| Loop Overview / Workflow / Evidence / Trace switch | No | Yes |
 | Artifact/source inspection | Link only | Details and future preview adapters |
-| Collapse, filter, live refresh | Limited | Extension point |
+| Traceable loop contraction and expansion | Limited | Yes |
 | Append-only capture and runtime gates | Backend concern | Backend concern |
 
 Both renderers consume `trace-model.json`; neither may reinterpret the canonical graph.

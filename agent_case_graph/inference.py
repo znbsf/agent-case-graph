@@ -10,7 +10,11 @@ SEMANTIC_TYPES = {
 
 
 def _ordered_nodes(nodes: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return sorted(nodes, key=lambda node: (node.get("first_sequence", 0), node["id"]))
+    def sequence(node: dict[str, Any]) -> int:
+        value = node.get("first_sequence")
+        return value if isinstance(value, int) and not isinstance(value, bool) else 10**9
+
+    return sorted(nodes, key=lambda node: (sequence(node), node["id"]))
 
 
 def _provenance(node: dict[str, Any]) -> dict[str, list[str]]:
@@ -156,6 +160,11 @@ def infer_workflow(graph: dict[str, Any], *, run_id: str | None = None) -> dict[
                                 "evidence_id": output["id"],
                                 "claim_id": edge["to"],
                             })
+                claim_relations.sort(
+                    key=lambda item: (
+                        item["relation"], item["evidence_id"], item["claim_id"], item["edge_id"]
+                    )
+                )
                 row = {
                     "id": action["id"], "label": action["label"], "type": action["type"],
                     "parallel_group": group_index,
@@ -204,11 +213,11 @@ def infer_workflow(graph: dict[str, Any], *, run_id: str | None = None) -> dict[
     for claim in _ordered_nodes(
         [node for node in nodes.values() if node["type"] in {"Claim", "RootCause"}]
     ):
-        evidence_relations = [
+        evidence_relations = sorted([
             {"edge_id": edge["id"], "relation": edge["type"], "evidence_id": edge["from"]}
             for edge in incoming[claim["id"]]
             if edge["type"] in {"supports", "refutes", "explains"}
-        ]
+        ], key=lambda item: (item["relation"], item["evidence_id"], item["edge_id"]))
         claims.append({
             "id": claim["id"], "label": claim["label"],
             "evidence_relations": evidence_relations,

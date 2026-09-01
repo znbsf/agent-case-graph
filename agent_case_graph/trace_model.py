@@ -12,6 +12,12 @@ PHASE_BY_TYPE = {
     "Case": "context",
     "Run": "context",
     "Goal": "context",
+    "DialogueRound": "context",
+    "ExecutionIteration": "execute",
+    "UserFeedback": "context",
+    "AgentResponse": "claim",
+    "Evaluation": "validate",
+    "Aggregate": "context",
     "ReasoningSummary": "inspect",
     "Input": "context",
     "Evidence": "inspect",
@@ -57,6 +63,7 @@ EVIDENCE_TYPES = {
     "Approval",
     "ReasoningSummary",
     "ToolOutput",
+    "Evaluation",
 }
 
 # Only forward control/dependency relations may constrain the layered DAG.
@@ -103,33 +110,80 @@ def _is_layout_edge(edge: dict[str, Any], node_types: dict[str, str]) -> bool:
 def _ranks(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> dict[str, int]:
     ids = {node["id"] for node in nodes}
     node_types = {node["id"]: node["type"] for node in nodes}
-    outgoing: dict[str, list[str]] = defaultdict(list)
-    indegree = {node_id: 0 for node_id in ids}
+    outgoing: dict[str, set[str]] = defaultdict(set)
     for edge in edges:
         if not _is_layout_edge(edge, node_types):
             continue
         source, target = edge["from"], edge["to"]
         if source not in ids or target not in ids or source == target:
             continue
-        outgoing[source].append(target)
-        indegree[target] += 1
+        outgoing[source].add(target)
 
-    queue = deque(sorted(node_id for node_id, degree in indegree.items() if degree == 0))
-    ranks = {node_id: 0 for node_id in ids}
-    visited = 0
-    while queue:
-        source = queue.popleft()
-        visited += 1
-        for target in sorted(outgoing[source]):
-            ranks[target] = max(ranks[target], ranks[source] + 1)
-            indegree[target] -= 1
-            if indegree[target] == 0:
-                queue.append(target)
+    index = 0
+    indices: dict[str, int] = {}
+    lowlinks: dict[str, int] = {}
+    stack: list[str] = []
+    on_stack: set[str] = set()
+    components: list[list[str]] = []
 
-    if visited != len(ids):
-        # Lint owns cycle reporting. The review projection stays deterministic.
-        return {node["id"]: index for index, node in enumerate(nodes)}
-    return ranks
+    def visit(node_id: str) -> None:
+        nonlocal index
+        indices[node_id] = lowlinks[node_id] = index
+        index += 1
+        stack.append(node_id)
+        on_stack.add(node_id)
+        for target in sorted(outgoing[node_id]):
+            if target not in indices:
+                visit(target)
+                lowlinks[node_id] = min(lowlinks[node_id], lowlinks[target])
+            elif target in on_stack:
+                lowlinks[node_id] = min(lowlinks[node_id], indices[target])
+        if lowlinks[node_id] == indices[node_id]:
+            component: list[str] = []
+            while stack:
+                member = stack.pop()
+                on_stack.remove(member)
+                component.append(member)
+                if member == node_id:
+                    break
+            components.append(sorted(component))
+
+    for node_id in sorted(ids):
+        if node_id not in indices:
+            visit(node_id)
+
+    component_of = {
+        node_id: component_id
+        for component_id, component in enumerate(components)
+        for node_id in component
+    }
+    component_outgoing: dict[int, set[int]] = defaultdict(set)
+    component_indegree = {component_id: 0 for component_id in range(len(components))}
+    for source, targets in outgoing.items():
+        for target in targets:
+            source_component = component_of[source]
+            target_component = component_of[target]
+            if source_component == target_component or target_component in component_outgoing[source_component]:
+                continue
+            component_outgoing[source_component].add(target_component)
+            component_indegree[target_component] += 1
+
+    component_key = {index: component[0] for index, component in enumerate(components)}
+    ready = deque(
+        sorted(
+            (component_id for component_id, degree in component_indegree.items() if degree == 0),
+            key=component_key.get,
+        )
+    )
+    component_rank = {component_id: 0 for component_id in range(len(components))}
+    while ready:
+        source = ready.popleft()
+        for target in sorted(component_outgoing[source], key=component_key.get):
+            component_rank[target] = max(component_rank[target], component_rank[source] + 1)
+            component_indegree[target] -= 1
+            if component_indegree[target] == 0:
+                ready.append(target)
+    return {node_id: component_rank[component_of[node_id]] for node_id in ids}
 
 
 def build_trace_model(
@@ -176,6 +230,9 @@ def build_trace_model(
             "layout": _is_layout_edge(edge, node_types),
             "attrs": edge.get("attrs", {}),
             "provenance": edge.get("provenance", {}),
+            "event_ids": list(edge.get("event_ids", [])),
+            "first_sequence": edge.get("first_sequence"),
+            "last_sequence": edge.get("last_sequence"),
         }
         for edge in graph["edges"]
         if edge["from"] in node_ids and edge["to"] in node_ids

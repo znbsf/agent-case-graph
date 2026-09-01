@@ -9,6 +9,7 @@ from agent_case_graph.ledger import append_event, load_events, write_new_ledger
 from agent_case_graph.inference import infer_workflow
 from agent_case_graph.lint import lint_graph
 from agent_case_graph.localization import load_display_locales
+from agent_case_graph.loop_projection import analyze_loops, build_loop_projection
 from agent_case_graph.model import SCHEMA_VERSION, validate_event
 from agent_case_graph.projector import project_events
 from agent_case_graph.renderer import render_plantuml, write_projection
@@ -94,6 +95,29 @@ class AgentCaseGraphTests(unittest.TestCase):
         graph = project_events(events)
         self.assertEqual(build_trace_model(graph, events), build_trace_model(graph, events))
 
+    def test_control_cycle_is_condensed_without_input_order_dependent_fake_ranks(self) -> None:
+        nodes = [
+            {"id": node_id, "type": "Action", "label": node_id, "attrs": {}, "event_ids": []}
+            for node_id in ("a", "b", "c")
+        ]
+        edges = [
+            {"id": "a-b", "type": "precedes", "from": "a", "to": "b", "attrs": {}},
+            {"id": "b-c", "type": "precedes", "from": "b", "to": "c", "attrs": {}},
+            {"id": "c-a", "type": "precedes", "from": "c", "to": "a", "attrs": {}},
+        ]
+        base = {
+            "graph_id": "cycle", "root_id": "a", "generated_at": "2026-01-01T00:00:00Z",
+            "stats": {"node_count": 3, "edge_count": 3},
+        }
+        first = build_trace_model({**base, "nodes": nodes, "edges": edges}, [])
+        reversed_model = build_trace_model(
+            {**base, "nodes": list(reversed(nodes)), "edges": list(reversed(edges))}, []
+        )
+        first_ranks = {node["id"]: node["rank"] for node in first["nodes"]}
+        reversed_ranks = {node["id"]: node["rank"] for node in reversed_model["nodes"]}
+        self.assertEqual(first_ranks, reversed_ranks)
+        self.assertEqual({0}, set(first_ranks.values()))
+
     def test_workflow_can_be_reverse_inferred_from_graph_relations(self) -> None:
         nodes = [
             {"id": "case", "type": "Case", "label": "Case", "attrs": {}, "event_ids": [], "first_sequence": 1},
@@ -125,7 +149,11 @@ class AgentCaseGraphTests(unittest.TestCase):
             "provenance": {"capture_mode": "synthetic", "source_refs": []},
         }
         for index, node_type in enumerate(
-            ("Plan", "ReasoningSummary", "ToolCall", "ToolOutput"), start=1
+            (
+                "Plan", "ReasoningSummary", "ToolCall", "ToolOutput",
+                "DialogueRound", "ExecutionIteration", "UserFeedback",
+                "AgentResponse", "Evaluation",
+            ), start=1
         ):
             validate_event(
                 {
@@ -145,6 +173,111 @@ class AgentCaseGraphTests(unittest.TestCase):
                 }
             )
 
+    def test_explicit_nested_loops_are_distinct_and_contraction_is_traceable(self) -> None:
+        node_specs = [
+            ("round", "DialogueRound", "Round", {"index": 0, "trigger_type": "initial_request"}),
+            ("iteration", "ExecutionIteration", "Iteration", {"index": 0}),
+            ("feedback", "UserFeedback", "Request", {}),
+            ("goal", "Goal", "Goal", {}),
+            ("plan", "Plan", "Plan", {}),
+            ("call", "ToolCall", "Call", {}),
+            ("output", "ToolOutput", "Output", {}),
+            ("evaluation", "Evaluation", "Evaluate", {}),
+            ("response", "AgentResponse", "Response", {}),
+        ]
+        nodes = [
+            {
+                "id": node_id, "type": node_type, "label": label, "attrs": attrs,
+                "event_ids": [], "first_sequence": index,
+                "provenance": {"capture_modes": ["synthetic"], "source_refs": ["test"], "run_ids": []},
+            }
+            for index, (node_id, node_type, label, attrs) in enumerate(node_specs, start=1)
+        ]
+        edge_specs = [
+            ("round-iteration", "contains", "round", "iteration"),
+            ("round-feedback", "contains", "round", "feedback"),
+            ("round-goal", "contains", "round", "goal"),
+            ("round-response", "contains", "round", "response"),
+            ("iteration-plan", "contains", "iteration", "plan"),
+            ("iteration-call", "contains", "iteration", "call"),
+            ("iteration-output", "contains", "iteration", "output"),
+            ("iteration-evaluation", "contains", "iteration", "evaluation"),
+            ("feedback-goal", "informs", "feedback", "goal"),
+            ("goal-plan", "frames", "goal", "plan"),
+            ("plan-call", "invokes", "plan", "call"),
+            ("call-output", "produces", "call", "output"),
+            ("call-evaluation", "precedes", "call", "evaluation"),
+            ("evaluation-call", "retry_of", "evaluation", "call"),
+            ("evaluation-response", "informs", "evaluation", "response"),
+        ]
+        edges = [
+            {
+                "id": edge_id, "type": edge_type, "from": source, "to": target,
+                "attrs": {},
+                "provenance": {"capture_modes": ["synthetic"], "source_refs": ["test"], "run_ids": []},
+            }
+            for edge_id, edge_type, source, target in edge_specs
+        ]
+        graph = {
+            "graph_id": "graph", "root_id": "round", "generated_at": "2026-01-01T00:00:00Z",
+            "nodes": nodes, "edges": edges, "stats": {"node_count": len(nodes), "edge_count": len(edges)},
+        }
+        trace = build_trace_model(graph, [])
+        original_nodes = json.loads(json.dumps(graph["nodes"]))
+        analysis = analyze_loops(graph)
+        overview = build_loop_projection(graph, trace)
+        self.assertEqual("explicit", analysis["mode"])
+        self.assertEqual(1, len(analysis["dialogue_rounds"]))
+        self.assertEqual(1, len(analysis["execution_iterations"]))
+        self.assertIsNone(analysis["signals"]["first_attempt_success_observed"])
+        self.assertEqual(2, overview["metrics"]["overview_node_count"])
+        self.assertLess(overview["metrics"]["compression_ratio"], 1)
+        self.assertTrue(overview["principles"]["all_members_traceable"])
+        self.assertTrue(overview["principles"]["all_source_nodes_accounted"])
+        self.assertEqual([], overview["unmapped_node_ids"])
+        self.assertEqual([], overview["unmapped_edge_ids"])
+        self.assertIn("goal-plan", {
+            edge_id
+            for edge in overview["edges"]
+            for edge_id in edge["attrs"]["original_edge_ids"]
+        })
+        execution = next(
+            node for node in overview["nodes"] if node["attrs"]["loop_scope"] == "execution"
+        )
+        self.assertIn("iteration", execution["attrs"]["member_ids"])
+        self.assertEqual("round", execution["attrs"]["parent_group_id"])
+        self.assertEqual(
+            {"call-evaluation", "evaluation-call"},
+            set(execution["attrs"]["cycle_edge_ids"]),
+        )
+        self.assertEqual(
+            {"contains", "frames", "informs", "invokes"},
+            {
+                edge["type"]
+                for edge in overview["edges"]
+                if edge["from"] != edge["to"]
+            },
+        )
+        reversed_graph = {**graph, "nodes": list(reversed(nodes)), "edges": list(reversed(edges))}
+        self.assertEqual(
+            overview,
+            build_loop_projection(reversed_graph, build_trace_model(reversed_graph, [])),
+        )
+        self.assertEqual(original_nodes, graph["nodes"])
+
+    def test_planless_graph_still_gets_a_conservative_loop_overview(self) -> None:
+        graph = {
+            "graph_id": "graph", "root_id": "goal", "generated_at": "2026-01-01T00:00:00Z",
+            "nodes": [
+                {"id": "goal", "type": "Goal", "label": "Goal", "attrs": {}, "event_ids": [], "first_sequence": 1},
+                {"id": "action", "type": "Action", "label": "Action", "attrs": {}, "event_ids": [], "first_sequence": 2},
+            ],
+            "edges": [], "stats": {"node_count": 2, "edge_count": 0},
+        }
+        overview = build_loop_projection(graph, build_trace_model(graph, []))
+        self.assertEqual("display-fallback", overview["mode"])
+        self.assertEqual(1, overview["metrics"]["dialogue_round_count"])
+        self.assertEqual(1, overview["metrics"]["execution_iteration_count"])
     def test_inference_preserves_parallel_groups_and_reports_precedes_cycles(self) -> None:
         nodes = [
             {"id": "goal", "type": "Goal", "label": "Goal", "first_sequence": 1},
@@ -230,10 +363,12 @@ class AgentCaseGraphTests(unittest.TestCase):
         self.assertIn('id="graphSvg"', html)
         self.assertIn('id="details"', html)
         self.assertIn('data-view="workflow"', html)
+        self.assertIn('data-view="overview"', html)
         self.assertIn('data-view="evidence"', html)
         self.assertIn('data-view="trace"', html)
         self.assertIn("claim-to-evidence", (out / "trace-model.json").read_text(encoding="utf-8"))
         self.assertEqual(PROTOCOL_VERSION, receipt["protocol_version"])
+        self.assertTrue((out / "loop-model.json").is_file())
         self.assertEqual(64, len(receipt["outputs"]["graph.html"]["sha256"]))
 
     def test_projection_removes_known_legacy_mermaid_output(self) -> None:
