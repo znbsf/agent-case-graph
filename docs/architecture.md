@@ -41,13 +41,26 @@ Trace Record
 
 The three levels follow the review hierarchy used by LEDGER: raw records remain available, related work is inspectable as evidence, and the default graph is compressed into workflow phases.
 
+The Workflow tab is a deliberate projection: it includes workflow nodes plus
+evidence nodes that participate in a forward layout edge. Other evidence is
+not deleted; it remains in the Evidence tab, source Trace, and node relations.
+Containment is drawn only to branch roots rather than repeated beside every
+flow edge. Large ranks wrap after three cards without changing their canonical
+rank.
+
 ## 4. Relation policy
 
 Only authored canonical edges are rendered.
 
-- solid: workflow or dependency relations such as `precedes`, `implemented_by`, `targets`;
+- solid: forward workflow or dependency relations such as `precedes`, `implemented_by`, `targets`;
 - dotted: evidence and provenance such as `supports`, `checks`, `uses`, `produces`, `derived_from`;
 - quiet: containment relations such as `has_run`, `contains`.
+
+Only the forward workflow/dependency set constrains DAG rank. Evidence and
+provenance relations remain authored facts, but they are reviewed in the HTML
+Evidence tab and node details rather than fed back into the workflow topology.
+This prevents a valid claim-to-evidence audit loop from turning the main graph
+into a false one-node-per-rank chain.
 
 The renderer never creates a missing support path from node types. A final Claim without explicit support remains visibly incomplete and is handled by lint.
 
@@ -58,11 +71,12 @@ The renderer never creates a missing support path from node types. A final Claim
 `trace.puml` is the static contract review:
 
 - top-down DAG;
-- branch and merge;
+- branch and merge using only forward layout edges;
 - phase color, type, status and relation labels;
 - deterministic text artifact suitable for diffs.
 
-It does not implement filters, details, live refresh or artifact preview.
+It does not implement filters, evidence back-links, details, live refresh or
+artifact preview.
 
 ### HTML
 

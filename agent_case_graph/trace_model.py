@@ -51,20 +51,24 @@ EVIDENCE_TYPES = {
     "RootCause",
     "AcceptanceCriterion",
     "Uncertainty",
+    "ScopeBoundary",
+    "Approval",
 }
 
-STRUCTURAL_EDGES = {
+# Only forward control/dependency relations may constrain the layered DAG.
+# Evidence relations intentionally point both from evidence to claims and from
+# decisions/actions back to their basis, so mixing them into one topological
+# sort can create a valid review cycle and collapse the layout to a line.
+LAYOUT_EDGE_TYPES = {
     "has_run",
     "contains",
     "precedes",
-    "supports",
-    "checks",
-    "explains",
     "implemented_by",
-    "produces",
-    "uses",
-    "derived_from",
     "targets",
+    "invokes",
+    "modifies",
+    "satisfies",
+    "tested_by",
 }
 
 
@@ -85,7 +89,7 @@ def _ranks(nodes: list[dict[str, Any]], edges: list[dict[str, Any]]) -> dict[str
     outgoing: dict[str, list[str]] = defaultdict(list)
     indegree = {node_id: 0 for node_id in ids}
     for edge in edges:
-        if edge["type"] not in STRUCTURAL_EDGES:
+        if edge["type"] not in LAYOUT_EDGE_TYPES:
             continue
         source, target = edge["from"], edge["to"]
         if source not in ids or target not in ids or source == target:
@@ -141,11 +145,23 @@ def build_trace_model(
             "type": edge["type"],
             "from": edge["from"],
             "to": edge["to"],
+            "layout": edge["type"] in LAYOUT_EDGE_TYPES,
             "attrs": edge.get("attrs", {}),
         }
         for edge in graph["edges"]
         if edge["from"] in node_ids and edge["to"] in node_ids
     ]
+
+    primary_ids = {
+        node["id"]
+        for node in nodes
+        if node["level"] == "workflow"
+    }
+    for edge in edges:
+        if edge["layout"] and edge["type"] not in {"contains", "has_run"}:
+            primary_ids.update((edge["from"], edge["to"]))
+    for node in nodes:
+        node["primary"] = node["id"] in primary_ids
 
     trace = [
         {
@@ -175,6 +191,8 @@ def build_trace_model(
         "principles": {
             "primary_reading": "workflow",
             "layout": "layered-top-down-dag",
+            "layout_edge_types": sorted(LAYOUT_EDGE_TYPES),
+            "primary_node_policy": "workflow + forward-layout endpoints",
             "review_direction": "claim-to-evidence",
             "source_records_preserved": True,
             "position_is_semantic": False,

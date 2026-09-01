@@ -11,7 +11,7 @@ from agent_case_graph.localization import load_display_locales
 from agent_case_graph.projector import project_events
 from agent_case_graph.renderer import render_plantuml, write_projection
 from agent_case_graph.runtime import build_runtime_snapshot
-from agent_case_graph.trace_model import PHASE_ORDER, PROTOCOL_VERSION, build_trace_model
+from agent_case_graph.trace_model import LAYOUT_EDGE_TYPES, PHASE_ORDER, PROTOCOL_VERSION, build_trace_model
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -43,7 +43,44 @@ class AgentCaseGraphTests(unittest.TestCase):
         self.assertTrue(model["principles"]["source_records_preserved"])
         self.assertEqual("claim-to-evidence", model["principles"]["review_direction"])
         self.assertFalse(model["principles"]["position_is_semantic"])
+        self.assertEqual(sorted(LAYOUT_EDGE_TYPES), model["principles"]["layout_edge_types"])
+        self.assertEqual("workflow + forward-layout endpoints", model["principles"]["primary_node_policy"])
         self.assertTrue(set(PHASE_ORDER).issubset({node["phase"] for node in model["nodes"]}))
+
+    def test_review_cycles_do_not_collapse_workflow_layout_to_a_line(self) -> None:
+        nodes = [
+            {"id": "case", "type": "Case", "label": "Case", "attrs": {}, "event_ids": []},
+            {"id": "left", "type": "Observation", "label": "Left evidence", "attrs": {}, "event_ids": []},
+            {"id": "right", "type": "Observation", "label": "Right evidence", "attrs": {}, "event_ids": []},
+            {"id": "cause", "type": "RootCause", "label": "Cause", "attrs": {}, "event_ids": []},
+            {"id": "decision", "type": "Decision", "label": "Decision", "attrs": {}, "event_ids": []},
+        ]
+        edge_specs = [
+            ("contains-left", "contains", "case", "left"),
+            ("contains-right", "contains", "case", "right"),
+            ("contains-cause", "contains", "case", "cause"),
+            ("contains-decision", "contains", "case", "decision"),
+            ("left-supports", "supports", "left", "cause"),
+            ("right-supports", "supports", "right", "cause"),
+            ("cause-precedes", "precedes", "cause", "decision"),
+            ("decision-derived", "derived_from", "decision", "cause"),
+        ]
+        edges = [
+            {"id": edge_id, "type": kind, "from": source, "to": target, "attrs": {}}
+            for edge_id, kind, source, target in edge_specs
+        ]
+        graph = {
+            "graph_id": "graph:branch-test", "root_id": "case", "generated_at": "2026-01-01T00:00:00Z",
+            "nodes": nodes, "edges": edges, "stats": {"nodes": len(nodes), "edges": len(edges)},
+        }
+        model = build_trace_model(graph, [])
+        ranks = {node["id"]: node["rank"] for node in model["nodes"]}
+        self.assertEqual(ranks["left"], ranks["right"])
+        self.assertEqual(ranks["left"], ranks["cause"])
+        self.assertGreater(ranks["decision"], ranks["cause"])
+        self.assertFalse(next(edge for edge in model["edges"] if edge["id"] == "decision-derived")["layout"])
+        self.assertTrue(next(node for node in model["nodes"] if node["id"] == "cause")["primary"])
+        self.assertFalse(next(node for node in model["nodes"] if node["id"] == "left")["primary"])
 
     def test_trace_model_is_deterministic(self) -> None:
         events = load_events(QUICKSTART)
@@ -66,10 +103,14 @@ class AgentCaseGraphTests(unittest.TestCase):
         puml = (out / "trace.puml").read_text(encoding="utf-8")
         html = (out / "graph.html").read_text(encoding="utf-8")
         for node in model["nodes"]:
-            self.assertIn(node["label"][:92], puml)
+            if node["primary"]:
+                self.assertIn(node["label"][:92], puml)
+            else:
+                self.assertNotIn(node["label"][:92], puml)
             self.assertIn(node["id"], html)
         self.assertIn("top to bottom direction", puml)
         self.assertIn("layered DAG", puml)
+        self.assertNotIn("supports", puml)
         self.assertIn('id="timeline"', html)
         self.assertIn('id="graphSvg"', html)
         self.assertIn('id="details"', html)
@@ -140,7 +181,8 @@ class AgentCaseGraphTests(unittest.TestCase):
         out = self.root / "generated"
         write_projection(out, graph=graph, events=events, findings=[], title="Wide rank")
         html = (out / "graph.html").read_text(encoding="utf-8")
-        self.assertIn("contentWidth=140+maxAcross*cardW+(maxAcross-1)*minGap", html)
+        self.assertIn("maxColumns=3", html)
+        self.assertIn("contentWidth=80+maxAcross*cardW+(maxAcross-1)*minGap", html)
         self.assertIn("overflow:auto", html)
 
 
