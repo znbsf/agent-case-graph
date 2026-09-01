@@ -47,6 +47,8 @@ Canonical typed graph
 - **依赖图**：主画布只用显式 `precedes` 解释计划偏序；当前 Runtime 门禁与主要阻塞在同页检查器中显示。
 - **六面体正交空间**：三个相邻面是互斥节点面（`z=0: State`、`y=0: Control`、`x=0: Action`），三个相对面是跨层线路面（`x=L: S↔C`、`z=L: C↔A`、`y=L: A↔S`）。节点不离开自己的面，跨层关系进入对应的平行线路面并全程按单轴折线流动。
 
+动作节点可以记录 `action_tool` 与 `action_output`，依赖图会直接显示“工具 / 产出”。生成页支持 `?mode=plan&plan=flow` 直接打开动作主图，或用 `?mode=plan&plan=orthogonal` 打开六面体结构投影。
+
 五种模式共享同一份 canonical graph、Run 选择和详情侧栏，不复制事实，也不让页面位置成为因果。HTML 由原生 SVG、HTML 和 JavaScript 组成，自包含、无 CDN，可以离线直接打开。
 
 ## 快速开始

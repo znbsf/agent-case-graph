@@ -40,6 +40,18 @@ LangGraph 的 checkpoint 文档进一步区分完整的 super-step checkpoint �
 | [3d-force-graph](https://github.com/vasturiano/3d-force-graph) | 适合快速验证空间关系，但力导向结果不够确定，不能用位置暗示 ACG 因果 |
 | [deck.gl](https://github.com/visgl/deck.gl) | 大规模节点/边与 GPU 图层有优势；当前 50 级节点规模不需要引入其运行时体积 |
 
+### 动作可读性的研究对照
+
+近期研究与前沿 trace 产品的共同做法不是把全部语义一次画进一张图，而是分层展开：
+
+- [Graph of Trace](https://arxiv.org/abs/2606.15116) 将原子 subtask 及其显式依赖画成自上而下的分层 DAG；左侧保留逐步执行，中心显示结构，右侧显示所选节点的描述、父依赖和中间产物。论文同时把层级折叠、语义分组和渐进展开列为大图必须补充的能力。
+- [AgentDiagnose](https://aclanthology.org/2025.emnlp-demos.15/) 不依赖一张全图解释所有问题，而是用状态转移时间线、action embedding 和交互分析分别诊断观察读取、自验证、探索与任务分解。
+- [W3C PROV-O](https://www.w3.org/TR/prov-o/) 将 Entity、Activity、Agent 分开，并用 `used`、`wasGeneratedBy`、`wasAssociatedWith` 构造 provenance chain；这支持 ACG 将“输入/产物”“实际活动”“责任主体”分开显示，而不是把工具和证据都写进同一种节点。
+- [LangSmith trace view](https://docs.langchain.com/langsmith/trace-deep-agents) 使用嵌套 span tree 展示 Agent、LLM 与 Tool run，并在节点内保留 tool input/output；Messages View 则给出更简单的顺序阅读面。
+- [Agentic AI Process Observability](https://arxiv.org/abs/2505.20127) 用 process/causal discovery 比较多次 agent trajectory 的行为差异，说明单次 trace 与跨运行聚合应是两个视图，不能混成一张“平均流程图”。
+
+因此 ACG 的阅读顺序调整为：先用 **Action DAG** 回答“做了什么、用了什么、产出了什么”，再用 **Orthogonal Cuboid** 检查 State / Control / Action 及跨层关系，最后在详情与 Replay 中核对原始证据和实际/重建边界。六面体是结构投影，不再承担第一眼叙事。
+
 ACG 不把所有职责塞进一张无限扩张的 Canvas，也不为每个模式复制图数据。当前工作台把同一语义目录按用户任务组织成五种模式：
 
 - **Overview**：总览 State / Control / Action 三层闭环与 Case 边界，Runtime Trace 只叠加在原节点上。

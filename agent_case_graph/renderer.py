@@ -524,10 +524,13 @@ button.plan-frontier-item:hover { border-color: var(--accent); }
 .spatial-node.replay-future, .spatial-node.replay-unrelated { opacity: .10; }
 .spatial-node.replay-past { opacity: .72; }
 .spatial-node.replay-current { border-color: var(--node-color); box-shadow: 0 0 0 4px color-mix(in srgb, var(--node-color) 28%, transparent), 0 9px 24px rgba(25, 38, 57, .20); }
-.spatial-node.flow-node { width: 214px; max-width: 30vw; min-height: 68px; padding: 8px 9px; }
+.spatial-node.flow-node { width: 232px; max-width: 32vw; min-height: 82px; padding: 8px 9px; }
 .spatial-node-top { display: flex; align-items: center; justify-content: space-between; gap: 4px; color: var(--muted); font-size: 7.5px; font-weight: 760; }
 .spatial-node-title { display: -webkit-box; margin-top: 4px; overflow: hidden; font-size: 10px; font-weight: 700; line-height: 1.32; overflow-wrap: anywhere; -webkit-box-orient: vertical; -webkit-line-clamp: 2; }
 .spatial-node-detail { margin-top: 5px; color: var(--muted); font-size: 7.5px; line-height: 1.3; overflow-wrap: anywhere; }
+.spatial-node-action-output { margin-top: 3px; color: var(--text); font-size: 7.8px; font-weight: 680; line-height: 1.32; overflow-wrap: anywhere; }
+.flow-node .spatial-node-title { font-size: 11px; }
+.flow-node .spatial-node-detail, .flow-node .spatial-node-action-output { font-size: 8.5px; }
 .spatial-node-status { width: 7px; height: 7px; border-radius: 999px; background: var(--node-color); box-shadow: 0 0 0 3px color-mix(in srgb, var(--node-color) 14%, transparent); }
 .flow-rank-line { stroke: var(--edge-soft); stroke-width: 1; stroke-dasharray: 2 7; vector-effect: non-scaling-stroke; }
 .flow-rank-label { fill: var(--muted); font-size: 8px; font-weight: 720; paint-order: stroke; stroke: var(--canvas); stroke-width: 3px; }
@@ -1132,8 +1135,8 @@ const UI = {
     evidenceReasoningChain: "观察 → 论断 → 决策 → 实现",
     evidenceVerificationChain: "验证 → 验收标准",
     evidenceNoPaths: "当前 Case 没有可展示的显式证据路径",
-    flowTitle: "显式计划依赖",
-    flowSubtitle: "主画布只显示 Run 的任务节点与 precedes 约束；依赖层级不代表真实执行顺序或耗时。",
+    flowTitle: "动作处理主线",
+    flowSubtitle: "每个节点显示做了什么、使用的工具和产出；连线只表示显式 precedes，重建动作不冒充原生执行时间线。",
     orthogonalTitle: "六面体正交路由",
     orthogonalSubtitle: "三个相邻面只放 State / Control / Action 节点，三个相对面只走跨层线路：S↔C ∥ A，C↔A ∥ S，A↔S ∥ C。",
     latestRun: "最新 Run 快照",
@@ -1155,6 +1158,8 @@ const UI = {
     planObservedPresent: "真实执行可观测",
     planInspectorTitle: "规划检查器",
     planInspectorNote: "层级是 precedes 偏序，不是时间；状态来自当前 Runtime 快照。",
+    actionToolLabel: "工具",
+    actionOutputLabel: "产出",
     planActiveTitle: "当前动作",
     planBlockerTitle: "主要阻塞",
     planNoActive: "当前没有运行中或可执行任务",
@@ -1318,8 +1323,8 @@ const UI = {
     evidenceReasoningChain: "Observation → Claim → Decision → Implementation",
     evidenceVerificationChain: "Verification → Acceptance criterion",
     evidenceNoPaths: "This Case has no explicit evidence path to display",
-    flowTitle: "Explicit plan dependencies",
-    flowSubtitle: "The primary canvas shows only Run task nodes and precedes constraints; dependency levels do not claim actual execution order or duration.",
+    flowTitle: "Action workflow",
+    flowSubtitle: "Each node shows the action, tool, and output. Edges are explicit precedes constraints; reconstructed actions are not presented as a native execution timeline.",
     orthogonalTitle: "Orthogonal cuboid routing",
     orthogonalSubtitle: "Three adjacent faces contain State / Control / Action nodes; three opposite faces carry cross-layer routes: S↔C ∥ A, C↔A ∥ S, and A↔S ∥ C.",
     latestRun: "Latest Run snapshot",
@@ -1341,6 +1346,8 @@ const UI = {
     planObservedPresent: "Actual execution observed",
     planInspectorTitle: "Plan inspector",
     planInspectorNote: "Levels are a precedes partial order, not time; state comes from the current Runtime snapshot.",
+    actionToolLabel: "Tool",
+    actionOutputLabel: "Output",
     planActiveTitle: "Current action",
     planBlockerTitle: "Primary blocker",
     planNoActive: "No running or ready task",
@@ -1532,8 +1539,9 @@ const primaryEdgeTypes = new Set(["targets", "has_run", "precedes", "uses", "inv
 
 let selectedId = null;
 let currentLocale = resolveInitialLocale();
-let workspaceMode = "overview";
-let spatialMode = "flow";
+const initialViewParams = new URLSearchParams(window.location.search);
+let workspaceMode = ["overview", "plan", "run", "review", "evidence"].includes(initialViewParams.get("mode")) ? initialViewParams.get("mode") : "overview";
+let spatialMode = initialViewParams.get("plan") === "orthogonal" ? "orthogonal" : "flow";
 let spatialLayer = "all";
 let spatialCamera = {yaw: -0.62, pitch: 0.48, scale: 1};
 let spatialDrag = null;
@@ -2539,7 +2547,7 @@ function buildFlowLayout(nodes, runtimeMap, snapshot, viewportWidth, viewportHei
   const columnGap = maxRank ? (compact ? 220 : Math.max(238, availableSpan / maxRank)) : 0;
   const topGutter = 82;
   const bottomGutter = 42;
-  const graphHeight = Math.max(190, 104 + maxCell * 86);
+  const graphHeight = Math.max(210, 114 + maxCell * 104);
   const graphCenter = topGutter + graphHeight / 2;
   const contentWidth = Math.max(viewportWidth, leftGutter + maxRank * columnGap + rightGutter);
   const contentHeight = Math.max(viewportHeight, topGutter + graphHeight + bottomGutter);
@@ -2547,8 +2555,8 @@ function buildFlowLayout(nodes, runtimeMap, snapshot, viewportWidth, viewportHei
   cells.forEach(function (cell, rank) {
     cell.forEach(function (node, slot) {
       const x = leftGutter + rank * columnGap;
-      const stackHeight = (cell.length - 1) * 78;
-      const y = graphCenter - stackHeight / 2 + slot * 78;
+      const stackHeight = (cell.length - 1) * 98;
+      const y = graphCenter - stackHeight / 2 + slot * 98;
       instances.push({
         key: node.id + "::flow", sourceId: node.id, node: node,
         layers: effectiveMembership(node, runtimeMap), displayLayer: "control",
@@ -2806,9 +2814,14 @@ function appendSpatialNodeButton(nodeLayer, instance, screen, index, runtimeMap,
   button.append(top, createText("div", "spatial-node-title", localizedNodeLabel(instance.node)));
   if (spatialMode === "flow") {
     const details = [message("planLevel", {rank: (instance.rank || 0) + 1})];
+    const attrs = instance.node.attrs || {};
+    if (attrs.action_tool) details.push(message("actionToolLabel") + ": " + attrs.action_tool);
     if (runtimeEntry && runtimeEntry.executor) details.push(runtimeEntry.executor);
     if (runtimeEntry && runtimeEntry.blockers && runtimeEntry.blockers[0]) details.push(runtimeEntry.blockers[0].message || runtimeEntry.blockers[0].code || "gate");
     button.appendChild(createText("div", "spatial-node-detail", details.join(" · ")));
+    if (attrs.action_output) button.appendChild(createText("div", "spatial-node-action-output", message("actionOutputLabel") + ": " + attrs.action_output));
+    if (attrs.action_tool) button.dataset.actionTool = attrs.action_tool;
+    if (attrs.action_output) button.dataset.actionOutput = attrs.action_output;
   }
   button.title = instance.node.id + " · " + instance.layers.join(" / ");
   button.addEventListener("click", function (event) { event.stopPropagation(); selectNode(instance.sourceId); });
