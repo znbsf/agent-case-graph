@@ -67,7 +67,6 @@ def _initial_case_events(
     actor_id: str,
     source_refs: list[str],
 ) -> list[dict[str, Any]]:
-    base_time = datetime.now().astimezone().replace(microsecond=0)
     definitions = [
         (
             "graph.declared",
@@ -119,6 +118,13 @@ def _initial_case_events(
             run_id,
         ),
     ]
+    # End the bootstrap sequence at the current wall-clock time.  Starting at
+    # "now" would put the later bootstrap events in the future, so an event
+    # appended immediately after init-case could have an earlier timestamp.
+    base_time = (
+        datetime.now().astimezone().replace(microsecond=0)
+        - timedelta(seconds=len(definitions) - 1)
+    )
     events: list[dict[str, Any]] = []
     for index, (kind, payload, event_run_id) in enumerate(definitions, start=1):
         events.append(
