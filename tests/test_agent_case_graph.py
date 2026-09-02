@@ -12,8 +12,9 @@ from agent_case_graph.localization import load_display_locales
 from agent_case_graph.loop_projection import analyze_loops, build_loop_projection
 from agent_case_graph.model import SCHEMA_VERSION, validate_event
 from agent_case_graph.projector import project_events
-from agent_case_graph.renderer import render_plantuml, write_projection
+from agent_case_graph.renderer import render_plantuml, render_sequence_plantuml, write_projection
 from agent_case_graph.runtime import build_runtime_snapshot
+from agent_case_graph.sequence_projection import build_sequence_projection
 from agent_case_graph.trace_model import LAYOUT_EDGE_TYPES, PHASE_ORDER, PROTOCOL_VERSION, build_trace_model
 
 
@@ -94,6 +95,60 @@ class AgentCaseGraphTests(unittest.TestCase):
         events = load_events(QUICKSTART)
         graph = project_events(events)
         self.assertEqual(build_trace_model(graph, events), build_trace_model(graph, events))
+
+    def test_sequence_projection_linearizes_one_execution_iteration_from_typed_relations(self) -> None:
+        nodes = [
+            {"id": "feedback", "type": "UserFeedback", "label": "Clarify scope", "phase": "context", "status": "recorded", "first_sequence": 1, "event_ids": [], "tool": None, "output": None},
+            {"id": "plan", "type": "Plan", "label": "Inspect code", "phase": "plan", "status": "recorded", "first_sequence": 4, "event_ids": [], "tool": None, "output": None},
+            {"id": "call", "type": "ToolCall", "label": "Search callers", "phase": "execute", "status": "completed", "first_sequence": 5, "event_ids": [], "tool": "rg", "output": None},
+            {"id": "output", "type": "ToolOutput", "label": "Matched two callers", "phase": "execute", "status": "completed", "first_sequence": 3, "event_ids": [], "tool": "rg", "output": "2 matches"},
+            {"id": "verification", "type": "Verification", "label": "Check matched callers", "phase": "validate", "status": "verified", "first_sequence": 0, "event_ids": [], "tool": None, "output": None},
+            {"id": "claim", "type": "Claim", "label": "Cause confirmed", "phase": "claim", "status": "confirmed", "first_sequence": 2, "event_ids": [], "tool": None, "output": None},
+        ]
+        trace_model = {
+            "nodes": nodes,
+            "trace": [],
+            "edges": [
+                {"type": "invokes", "from": "plan", "to": "call"},
+                {"type": "produces", "from": "call", "to": "output"},
+                {"type": "checks", "from": "verification", "to": "output"},
+                {"type": "supports", "from": "output", "to": "claim"},
+            ],
+        }
+        overview = {
+            "nodes": [
+                {
+                    "id": "overview:i0",
+                    "label": "Execution iteration 1",
+                    "attrs": {
+                        "loop_scope": "execution",
+                        "member_ids": ["plan", "call", "output", "verification", "claim"],
+                        "focus_member_id": "plan",
+                    },
+                }
+            ]
+        }
+        sequence = build_sequence_projection(trace_model, overview)
+        self.assertEqual("sequence-projection-0.1", sequence["protocol_version"])
+        self.assertFalse(sequence["principles"]["sequence_is_causality"])
+        self.assertEqual("typed-partial-order-linearization", sequence["scopes"][0]["order_mode"])
+        self.assertEqual(4, sequence["scopes"][0]["ordering_relation_count"])
+        self.assertEqual(["plan", "call", "output", "verification", "claim"], [
+            next(step for step in sequence["steps"] if step["id"] == step_id)["node_id"]
+            for step_id in sequence["scopes"][0]["step_ids"]
+        ])
+        routes = {step["node_id"]: (step["from"], step["to"]) for step in sequence["steps"]}
+        self.assertEqual(("agent", "tool"), routes["call"])
+        self.assertEqual(("tool", "agent"), routes["output"])
+        self.assertEqual(("agent", "user"), routes["claim"])
+        self.assertEqual(["feedback"], [
+            next(step for step in sequence["steps"] if step["id"] == step_id)["node_id"]
+            for step_id in sequence["scopes"][1]["step_ids"]
+        ])
+        puml = render_sequence_plantuml(sequence)
+        self.assertIn("title Agent execution — sequence projection", puml)
+        self.assertIn("agent -> tool : [ToolCall] Search callers", puml)
+        self.assertIn("tool --> agent : [ToolOutput] Matched two callers", puml)
 
     def test_control_cycle_is_condensed_without_input_order_dependent_fake_ranks(self) -> None:
         nodes = [
@@ -349,6 +404,7 @@ class AgentCaseGraphTests(unittest.TestCase):
         )
         model = json.loads((out / "trace-model.json").read_text(encoding="utf-8"))
         puml = (out / "trace.puml").read_text(encoding="utf-8")
+        sequence_puml = (out / "sequence.puml").read_text(encoding="utf-8")
         html = (out / "graph.html").read_text(encoding="utf-8")
         for node in model["nodes"]:
             if node["primary"]:
@@ -358,17 +414,25 @@ class AgentCaseGraphTests(unittest.TestCase):
             self.assertIn(node["id"], html)
         self.assertIn("top to bottom direction", puml)
         self.assertIn("layered DAG", puml)
+        self.assertIn("sequence projection", sequence_puml)
+        self.assertIn("sequence_is_causality", (out / "trace-model.json").read_text(encoding="utf-8"))
         self.assertNotIn("supports", puml)
         self.assertIn('id="timeline"', html)
         self.assertIn('id="graphSvg"', html)
         self.assertIn('id="details"', html)
         self.assertIn('data-view="workflow"', html)
         self.assertIn('data-view="overview"', html)
+        self.assertIn('data-view="sequence"', html)
         self.assertIn('data-view="evidence"', html)
         self.assertIn('data-view="trace"', html)
+        self.assertIn('id="sequenceScopeSelect"', html)
+        self.assertIn("function renderSequence", html)
+        self.assertIn('"data-edge-label":edge.type', html)
         self.assertIn("claim-to-evidence", (out / "trace-model.json").read_text(encoding="utf-8"))
         self.assertEqual(PROTOCOL_VERSION, receipt["protocol_version"])
         self.assertTrue((out / "loop-model.json").is_file())
+        self.assertTrue((out / "sequence-model.json").is_file())
+        self.assertTrue((out / "sequence.puml").is_file())
         self.assertEqual(64, len(receipt["outputs"]["graph.html"]["sha256"]))
 
     def test_projection_removes_known_legacy_mermaid_output(self) -> None:
@@ -380,6 +444,7 @@ class AgentCaseGraphTests(unittest.TestCase):
         write_projection(out, graph=graph, events=events, findings=[], title="Reset")
         self.assertFalse((out / "graph.mmd").exists())
         self.assertTrue((out / "trace.puml").exists())
+        self.assertTrue((out / "sequence.puml").exists())
 
     def test_projection_is_self_contained_and_has_no_spatial_legacy(self) -> None:
         events = load_events(QUICKSTART)

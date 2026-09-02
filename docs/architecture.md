@@ -5,7 +5,7 @@
 ACG is an evidence-first trace protocol, not a drawing engine. The durable layer records what happened and what relations were explicitly declared. Rendering remains replaceable.
 
 ```text
-Event Ledger -> Canonical Graph -> paper-trace-0.1 -> loop-projection-0.1 -> PlantUML / HTML
+Event Ledger -> Canonical Graph -> paper-trace-0.1 -> loop/sequence projections -> PlantUML / HTML
 ```
 
 ## 2. Durable layer
@@ -22,6 +22,13 @@ state.changed
 Every event has a stable `event_id`, contiguous `sequence`, actor and provenance. `capture_mode` is always one of `live / reconstructed / synthetic`.
 
 The canonical graph retains stable IDs, typed nodes and typed edges. Runtime gates, lint and replay consume this graph; no renderer is allowed to infer causality from coordinates or timestamps.
+
+The sequence projection groups semantic nodes by projected `ExecutionIteration`
+and linearizes typed temporal constraints; the first source Ledger sequence is
+only a stable tie-breaker. It is deliberately a readability view: vertical
+adjacency is not causality. Typed relations such as `frames`, `informs`,
+`supersedes`, `supports`, `invokes`, and `produces` remain canonical graph edges
+and are exposed by the workflow/evidence views.
 
 ## 3. Review projection
 
@@ -58,6 +65,14 @@ cycle edge IDs, cross-group raw endpoints and provenance. Nodes or edges that
 cannot be assigned are reported explicitly as unmapped. Missing dialogue input
 evidence produces a display fallback, not a claimed user turn. Acceptance and
 first-attempt success remain unknown without an explicit accepted signal.
+
+The Sequence projection linearizes one execution aggregate from explicit typed
+temporal constraints. Forward relations such as `precedes`, `invokes`, and
+`produces` retain direction; review-style relations such as `checks` and
+`supersedes` are interpreted in their temporal direction. Ready peers use the
+first source Ledger sequence only as a deterministic tie-breaker. The original
+source sequence remains visible, and adjacency in the resulting total order is
+not promoted to a causal claim.
 
 The Workflow tab is a deliberate projection: it includes workflow nodes plus
 evidence nodes that participate in a forward layout edge. Other evidence is

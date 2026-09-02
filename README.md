@@ -9,9 +9,11 @@
 Agent Case Graph（ACG）把 Agent 的操作、证据、产物和结论先保存为 append-only JSONL，再投影为同一个 `paper-trace-0.1` 模型：
 
 - `trace.puml`：可评审、可版本比较的 PlantUML 静态基准图；
-- `graph.html`：自包含三栏工作台，支持 Loop Overview / Workflow / Evidence / Trace 下钻；
+- `sequence.puml`：按显式时序关系线性化的 PlantUML 单次执行投影，保留源记录号；
+- `graph.html`：自包含三栏工作台，支持 Loop Overview / Sequence / Workflow / Evidence / Trace 下钻；
 - `loop-model.json`：由 canonical graph 派生的双循环聚合索引；
-- `trace-model.json`：两种渲染器共享的唯一展示契约；
+- `sequence-model.json`：单次执行生命线、步骤和 ExecutionIteration 作用域；
+- `trace-model.json`：全部投影视图共享的唯一展示契约；
 - `graph.json`：完整 canonical typed graph。
 
 新版刻意不提供 3D 平面、五套重复工作台或自动布局语义。图只回答三个问题：
@@ -45,10 +47,11 @@ Canonical Graph
   stable IDs · typed nodes/edges · lint · runtime gates
         |
         v
-paper-trace-0.1 + loop-projection-0.1
-  Dialogue Round · Execution Iteration · Workflow Phase · Evidence · Trace
+paper-trace-0.1 + loop-projection-0.1 + sequence-projection-0.1
+  Dialogue Round · Execution Iteration · Sequence · Workflow Phase · Evidence · Trace
         |
         +--> trace.puml
+        +--> sequence.puml
         +--> graph.html
 ```
 
@@ -79,16 +82,21 @@ acg project examples/quickstart/events.jsonl \
   -Format svg
 ```
 
+将输入改成 `examples/quickstart/generated/sequence.puml` 即可生成时序图。时序投影先按 `precedes / invokes / produces / checks / supersedes` 等显式关系构造偏序，同级节点再用源记录号稳定排序。线性化后的相邻步骤不一定互为因果；因果仍以 canonical typed edge 为准。
+
 PowerShell 用户可以直接运行仓库根目录的 `acg.ps1`。
 
-## HTML 的四个粒度
+## HTML 的五个粒度
 
 - **Loop Overview**：把外层用户对话轮次与内层 Agent 执行迭代分开显示；点击聚合点可查看成员并展开。
-- **Workflow**：六阶段自上而下 DAG，查看 Goal / Plan / ToolCall / Output 的完整流程。
+- **Sequence**：选择一个 Execution Iteration，查看 User / Agent / Tool / Evidence / Evaluator 之间的单次执行顺序。
+- **Workflow**：六阶段自上而下因果 DAG，显式显示 `frames / invokes / produces / supersedes` 等关键关系。
 - **Evidence**：只保留可审计节点及 evidence/provenance 关系，从 Claim 反查支持链。
 - **Trace**：按 Ledger `sequence` 显示原始记录；顺序不是因果。
 
 三栏固定职责：左侧原始 Trace，中间 DAG，右侧选中节点的属性、工具、产出、上下游关系和源记录。
+
+Sequence 负责回答“单次执行先后发生了什么”；Workflow / Evidence 负责回答“为什么这样计划、什么证据改变了计划、哪些检查支撑结论”。两者来自同一 canonical graph，互为投影而不是互相替代。
 
 ## 双循环与图化简
 
