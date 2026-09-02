@@ -9,9 +9,16 @@ from importlib.resources import files
 from pathlib import Path
 from typing import Any, Sequence
 
+from .graph_runtime import (
+    GRAPH_RUNTIME_PROTOCOL_VERSION,
+    build_claim_gate,
+    build_graph_runtime_advice,
+    recommendation_record_attrs,
+    resolve_claim_run_id,
+)
 from .importer import import_issue_events
 from .inference import infer_workflow
-from .ledger import append_event, atomic_write_text, canonical_json, write_new_ledger
+from .ledger import append_event, atomic_write_text, canonical_json, sha256_file, write_new_ledger
 from .lint import lint_graph
 from .localization import load_display_locales
 from .model import ACGError, SCHEMA_VERSION, load_events
@@ -22,6 +29,7 @@ from .runtime import (
     render_runtime_snapshot,
     validate_step_transition,
 )
+from .replay import build_path_review
 
 
 def _json_object(value: str) -> dict[str, Any]:
@@ -206,6 +214,16 @@ def _load_project_lint(ledger: Path) -> tuple[list[dict[str, Any]], dict[str, An
     return events, graph, findings
 
 
+def _load_history_graphs(ledgers: Sequence[Path]) -> list[dict[str, Any]]:
+    """Load separate historical Case Ledgers without merging them into this Case."""
+
+    graphs: list[dict[str, Any]] = []
+    for ledger in ledgers:
+        events = load_events(ledger)
+        graphs.append(project_events(events, ledger_path=ledger))
+    return graphs
+
+
 def _cmd_lint(args: argparse.Namespace) -> int:
     _, _, findings = _load_project_lint(args.ledger)
     if args.json:
@@ -318,6 +336,142 @@ def _cmd_step_status(args: argparse.Namespace) -> int:
             indent=2,
         )
     )
+    return 0
+
+
+def _cmd_advise(args: argparse.Namespace) -> int:
+    _, graph = _require_clean_runtime_graph(args.ledger)
+    advice = build_graph_runtime_advice(
+        graph,
+        run_id=args.run_id,
+        history_graphs=_load_history_graphs(args.history_ledger),
+    )
+    print(json.dumps(advice, ensure_ascii=False, indent=2))
+    return 0
+
+
+def _cmd_record_recommendation(args: argparse.Namespace) -> int:
+    events, graph = _require_clean_runtime_graph(args.ledger)
+    advice = build_graph_runtime_advice(
+        graph,
+        run_id=args.run_id,
+        history_graphs=_load_history_graphs(args.history_ledger),
+    )
+    selected_run_id = advice.get("run_id")
+    if not isinstance(selected_run_id, str) or not selected_run_id:
+        raise ACGError("cannot record a runtime recommendation without a selected Run")
+    source_hash = sha256_file(args.ledger)
+    recommendation_id = f"decision:runtime-recommendation:{events[0]['case_id']}:{len(events) + 1}"
+    event = append_event(
+        args.ledger,
+        case_id=events[0]["case_id"],
+        kind="node.recorded",
+        actor_type=args.actor_type,
+        actor_id=args.actor_id,
+        capture_mode=args.capture_mode,
+        source_refs=sorted(set(args.source_ref + [f"ledger-sha256:{source_hash}"])),
+        payload={
+            "node": {
+                "id": recommendation_id,
+                "type": "Decision",
+                "label": f"Graph-runtime recommendation #{len(events) + 1}",
+                "attrs": recommendation_record_attrs(
+                    advice, source_ledger_sha256=source_hash
+                ),
+            }
+        },
+        run_id=selected_run_id,
+        occurred_at=args.occurred_at,
+    )
+    print(
+        json.dumps(
+            {
+                "recommendation": {
+                    "node_id": recommendation_id,
+                    "event_id": event["event_id"],
+                    "sequence": event["sequence"],
+                    "run_id": selected_run_id,
+                    "data_origin": "derived",
+                    "not_native_telemetry": True,
+                },
+                "advice_status": advice["status"],
+                "recommended_node_ids": event["node"]["attrs"]["recommended_node_ids"],
+                "claim_gate_snapshot": event["node"]["attrs"]["claim_gate_snapshot"],
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
+
+
+def _cmd_claim_status(args: argparse.Namespace) -> int:
+    events, graph = _require_clean_runtime_graph(args.ledger)
+    selected_run_id = args.run_id or resolve_claim_run_id(graph, args.claim_id)
+    gate = build_claim_gate(graph, args.claim_id, run_id=selected_run_id)
+    if args.status == "confirmed" and not gate["can_confirm"]:
+        codes = ", ".join(sorted({item["code"] for item in gate["missing_evidence"]}))
+        raise ACGError(
+            f"Claim gate blocked confirmation for {args.claim_id}: {codes or 'evidence insufficient'}"
+        )
+    claim = gate["claim"]
+    source_node_ids = gate["derivation"]["source_node_ids"]
+    source_edge_ids = gate["derivation"]["source_edge_ids"]
+    checkpoint_id = f"claim-gate:{args.claim_id}:{len(events) + 1}"
+    event = append_event(
+        args.ledger,
+        case_id=events[0]["case_id"],
+        kind="node.recorded",
+        actor_type=args.actor_type,
+        actor_id=args.actor_id,
+        capture_mode=args.capture_mode,
+        source_refs=args.source_ref,
+        payload={
+            "node": {
+                "id": claim["id"],
+                "type": claim["type"],
+                "label": claim["label"],
+                "attrs": {
+                    "status": args.status,
+                    "runtime_claim_gate": {
+                        "checkpoint_id": checkpoint_id,
+                        "protocol_version": GRAPH_RUNTIME_PROTOCOL_VERSION,
+                        "data_origin": "derived",
+                        "not_native_telemetry": True,
+                        "gate_status": gate["status"],
+                        "can_confirm": gate["can_confirm"],
+                        "evidence_actualness": gate["evidence_actualness"],
+                        "source_node_ids": source_node_ids,
+                        "source_edge_ids": source_edge_ids,
+                    },
+                },
+            }
+        },
+        run_id=selected_run_id,
+        occurred_at=args.occurred_at,
+    )
+    print(
+        json.dumps(
+            {
+                "checkpoint": {
+                    "id": checkpoint_id,
+                    "event_id": event["event_id"],
+                    "sequence": event["sequence"],
+                    "claim_id": claim["id"],
+                    "to": args.status,
+                },
+                "gate": gate,
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
+    )
+    return 0
+
+
+def _cmd_review_paths(args: argparse.Namespace) -> int:
+    events, graph, _ = _load_project_lint(args.ledger)
+    print(json.dumps(build_path_review(graph, events), ensure_ascii=False, indent=2))
     return 0
 
 
@@ -492,6 +646,69 @@ def build_parser() -> argparse.ArgumentParser:
     step_status.add_argument("--source-ref", action="append", default=[])
     step_status.add_argument("--occurred-at")
     step_status.set_defaults(func=_cmd_step_status)
+
+    advise = subparsers.add_parser(
+        "advise",
+        help="derive evidence gaps, Claim gates and next safe Action/ToolCall candidates",
+    )
+    advise.add_argument("ledger", type=Path)
+    advise.add_argument("--run-id")
+    advise.add_argument(
+        "--history-ledger",
+        action="append",
+        type=Path,
+        default=[],
+        help="separate historical Case Ledger; only explicit reuse_key matches are considered",
+    )
+    advise.set_defaults(func=_cmd_advise)
+
+    record_recommendation = subparsers.add_parser(
+        "record-recommendation",
+        help="append a derived Decision snapshot of current graph-runtime advice",
+    )
+    record_recommendation.add_argument("--ledger", required=True, type=Path)
+    record_recommendation.add_argument("--run-id")
+    record_recommendation.add_argument("--history-ledger", action="append", type=Path, default=[])
+    record_recommendation.add_argument(
+        "--actor-type", choices=("human", "agent", "tool", "service"), default="agent"
+    )
+    record_recommendation.add_argument("--actor-id", default="local-agent")
+    record_recommendation.add_argument(
+        "--capture-mode", choices=("live", "reconstructed", "synthetic"), default="live"
+    )
+    record_recommendation.add_argument("--source-ref", action="append", default=[])
+    record_recommendation.add_argument("--occurred-at")
+    record_recommendation.set_defaults(func=_cmd_record_recommendation)
+
+    claim_status = subparsers.add_parser(
+        "claim-status",
+        help="append a Claim/RootCause status checkpoint; confirmed requires the graph Claim gate",
+    )
+    claim_status.add_argument("--ledger", required=True, type=Path)
+    claim_status.add_argument("--claim-id", required=True)
+    claim_status.add_argument(
+        "--status",
+        required=True,
+        choices=("draft", "proposed", "confirmed", "blocked", "refuted"),
+    )
+    claim_status.add_argument("--run-id")
+    claim_status.add_argument(
+        "--actor-type", choices=("human", "agent", "tool", "service"), default="agent"
+    )
+    claim_status.add_argument("--actor-id", default="local-agent")
+    claim_status.add_argument(
+        "--capture-mode", choices=("live", "reconstructed", "synthetic"), default="live"
+    )
+    claim_status.add_argument("--source-ref", action="append", default=[])
+    claim_status.add_argument("--occurred-at")
+    claim_status.set_defaults(func=_cmd_claim_status)
+
+    review_paths = subparsers.add_parser(
+        "review-paths",
+        help="compare recorded derived recommendations with later Ledger runtime records",
+    )
+    review_paths.add_argument("ledger", type=Path)
+    review_paths.set_defaults(func=_cmd_review_paths)
 
     importer = subparsers.add_parser("import-issue", help="read-only historical issue import")
     importer.add_argument("issue_dir", type=Path)

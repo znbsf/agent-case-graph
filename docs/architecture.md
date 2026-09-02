@@ -154,7 +154,7 @@ The HTML contains no CDN dependency and never executes an Action.
 
 ## 6. Runtime remains separate
 
-Only explicit `runtime_managed=true` Step, Action and Verification nodes inside a Run enter the control plane. `next-actions` uses `precedes / blocked_by / approved_by`; `step-status` appends a checkpoint after validating the transition.
+Only explicit `runtime_managed=true` Step, Action, ToolCall and Verification nodes inside a Run (including nested `contains` scopes) enter the control plane. `next-actions` uses `precedes / blocked_by / approved_by`; `step-status` appends a checkpoint after validating the transition. Approval scope matching is exact-token based (`*`, a list, or comma/semicolon-delimited scopes), not substring matching.
 
 An executable node's minimal context packet follows incoming context lineage for
 at most three hops, so `Action <- Plan <- Goal/ReasoningSummary` is available
@@ -162,9 +162,19 @@ without loading the whole graph.
 
 The visual trace can explain runtime state but cannot declare a node Ready, grant approval or invoke tools.
 
+### Graph-native advisory control plane
+
+`graph-runtime-0.1` consumes the same canonical graph but remains derived and side-effect free. It returns a Ready `Action`/`ToolCall` recommendation only for an explicit runtime-managed node; it never manufactures a ToolCall from labels, timestamps, layout, or an embedding match.
+
+For each `Claim` or `RootCause`, the claim gate follows only declared incoming `supports` / `refutes` edges. A confirmation needs at least one complete non-derived evidence node and a non-derived `supports` relation, and can be tightened with `minimum_support_count`, `required_evidence_ids`, `required_evidence_types`, and `required_capture_modes`. Claim, evidence and relation must each have one identical explicit Run owner, or all three must be global; other-Run, global-to-Run, and multi-Run inputs are excluded rather than silently shared. Pending, failed, partial, derived, or unsupported source nodes are reported as evidence gaps; usable refuting evidence blocks confirmation. `claim-status --status confirmed` stores a derived gate receipt and only infers an omitted Run when the Claim has one unique owner, while the low-level Ledger format remains able to faithfully import pre-existing reconstructed history.
+
+`record-recommendation` records a derived `Decision` snapshot (`data_origin=derived`, `not_native_telemetry=true`) with the source Ledger hash and selected node IDs. `review-paths` later compares that snapshot with subsequent runtime node records using Ledger sequence. It labels the recommendation and comparison as derived, labels the actual side by its original capture mode, and never re-executes or invents missing actions.
+
 ## 7. Historical reconstruction
 
 The importer is read-only. Historical events are marked `reconstructed`; the page repeats that boundary when the selected node originates from reconstructed records. Visual replay is always `visual_only=true` and `reexecutes_actions=false`.
+
+Cross-case reuse is also derived. A current candidate may match history only through an explicit `reuse_key` / `reuse_keys` attribute, never label similarity. A historical path is called `verified_success_path` only when its Case has an explicit closed/completed state and that same historical Run has a non-derived `VerificationReceipt`; a receipt in another Run cannot qualify it. Reconstructed or synthetic matches remain `advisory_only_non_live_history` and never prove a current live Run.
 
 ## 8. Deliberately removed from the reset
 

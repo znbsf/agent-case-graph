@@ -4,6 +4,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from .graph_runtime import build_graph_runtime_advice
 from .ledger import sha256_file
 from .model import ACGError, SCHEMA_VERSION
 from .replay import build_replay_catalog
@@ -134,5 +135,6 @@ def project_events(
         },
     }
     graph["runtime"] = build_runtime_catalog(graph)
+    graph["runtime_advice"] = build_graph_runtime_advice(graph)
     graph["replay"] = build_replay_catalog(graph, events)
     return graph

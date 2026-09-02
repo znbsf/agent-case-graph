@@ -432,8 +432,10 @@ class AgentCaseGraphTests(unittest.TestCase):
         self.assertEqual(PROTOCOL_VERSION, receipt["protocol_version"])
         self.assertTrue((out / "loop-model.json").is_file())
         self.assertTrue((out / "sequence-model.json").is_file())
+        self.assertTrue((out / "runtime-advice.json").is_file())
         self.assertTrue((out / "sequence.puml").is_file())
         self.assertEqual(64, len(receipt["outputs"]["graph.html"]["sha256"]))
+        self.assertEqual(64, len(receipt["outputs"]["runtime-advice.json"]["sha256"]))
 
     def test_projection_removes_known_legacy_mermaid_output(self) -> None:
         events = load_events(QUICKSTART)

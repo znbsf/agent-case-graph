@@ -118,6 +118,29 @@ DialogueRound (外层：用户输入/反馈 -> Goal 修订 -> AgentResponse)
 - runtime Ready frontier、Approval scope 和 Checkpoint；
 - visual-only replay，不重新执行工具或副作用。
 
+## Graph-native Runtime（最小闭环）
+
+`graph-runtime-0.1` 是 canonical graph 的只读控制面：它不会调用 Tool，也不会把推断写成原生 telemetry。
+
+- 只有 `Run` 作用域内显式标记 `runtime_managed=true` 的 `Action`、`ToolCall`、`Step`、`Verification` 才进入 Runtime。`ToolCall` 可以作为安全的下一步建议，但建议不等于已经调用。
+- `acg advise` 汇总 Ready frontier、Claim 的缺失证据和可执行的 `Action`/`ToolCall`；候选到 Claim 的映射只沿已声明的 `produces -> supports/refutes` 关系，找不到作者声明的动作时会明确留空，而不会编造工具调用。
+- `Claim` / `RootCause` 的确认 gate 默认至少需要一条来自已完成、非 derived 证据节点的显式 `supports` 边；derived `supports` 关系也不能开启 gate。Claim、证据和支持关系必须唯一属于同一 `Run`（或三者均为 global），不会把其他 Run、global 或多 Run 证据自动借来确认。可在 Claim attrs 中加 `minimum_support_count`、`required_evidence_ids`、`required_evidence_types`、`required_capture_modes` 收紧条件；`refutes` 证据会阻止确认。`acg claim-status --status confirmed` 会执行此 gate，并在未传 `--run-id` 时只推断 Claim 的唯一 Run owner。
+- `acg record-recommendation` 把当时的建议快照 append 为 `Decision`，其中 `data_origin=derived`、`not_native_telemetry=true`、输入 Ledger SHA256、候选 ID 和 gate 摘要都会保留。之后的实际路径只从 Ledger 的后续 runtime node records 提取。
+- `acg review-paths` 使用 Ledger `sequence` 比较已记录的建议与实际 runtime records；比较本身也是 derived，绝不重放工具或补全缺失操作。
+- 历史复用需要显式相同的 `attrs.reuse_key`（或 `reuse_keys`），不会按 label 相似度猜测。只有 Case 已关闭/完成，且**同一历史 Run**有非 derived 的 `VerificationReceipt`，才标记为 verified success path；`reconstructed` 或 `synthetic` 历史始终只是 advisory template，不能充当当前 live Run 的执行证明。
+
+例如：
+
+```bash
+acg advise current-events.jsonl --run-id run:CASE:001 \
+  --history-ledger known-good-case.jsonl
+acg record-recommendation --ledger current-events.jsonl --run-id run:CASE:001
+acg claim-status --ledger current-events.jsonl --claim-id claim:root-cause --status confirmed
+acg review-paths current-events.jsonl
+```
+
+`project` 还会生成 `runtime-advice.json`。这是当前图状态的可再建派生物；它不替代 Ledger，也不证明动作实际发生过。
+
 ## 从图反推流程
 
 ACG 可以显式记录 `Goal -> Plan -> ToolCall -> ToolOutput -> Claim`：
@@ -152,6 +175,10 @@ lint              执行确定性协议检查
 project           生成 PlantUML / HTML / JSON / Lint / receipt
 next-actions      计算 Ready frontier 与阻塞原因
 step-status       追加受门禁保护的 runtime Checkpoint
+advise             派生证据缺口、Claim gate 与下一步 Action/ToolCall
+record-recommendation  append-only 记录 derived 推荐快照
+claim-status       通过 Claim gate 追加确认/阻塞状态
+review-paths       对比已记录推荐和后续 Ledger 实际路径
 import-issue      只读导入历史 Issue
 infer-workflow    仅从 canonical graph 反推 Goal/Plan/Tool/Output/Claim
 record-node       追加节点事件

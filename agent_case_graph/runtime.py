@@ -1,12 +1,13 @@
 from __future__ import annotations
 
 from collections import defaultdict
+import re
 from typing import Any
 
 from .model import ACGError
 
 
-EXECUTABLE_NODE_TYPES = {"Step", "Action", "Verification"}
+EXECUTABLE_NODE_TYPES = {"Step", "Action", "ToolCall", "Verification"}
 SUCCESS_STATUSES = {"completed", "succeeded", "passed", "verified", "skipped"}
 ACTIVE_STATUSES = {"claimed", "running", "in_progress"}
 FAILED_STATUSES = {"failed", "error", "cancelled", "aborted", "unknown"}
@@ -71,18 +72,12 @@ def _node_summary(node: dict[str, Any], **extra: Any) -> dict[str, Any]:
 
 
 def _latest_runtime_run(graph: dict[str, Any]) -> str | None:
-    nodes = {node["id"]: node for node in graph["nodes"]}
     candidates: list[dict[str, Any]] = []
     for run in graph["nodes"]:
         if run["type"] != "Run":
             continue
-        has_runtime_node = any(
-            edge["type"] == "contains"
-            and edge["from"] == run["id"]
-            and nodes.get(edge["to"], {}).get("attrs", {}).get("runtime_managed") is True
-            for edge in graph["edges"]
-        )
-        if has_runtime_node:
+        _, runtime_nodes = _runtime_nodes_for_run(graph, run["id"])
+        if runtime_nodes:
             candidates.append(run)
     if not candidates:
         return None
@@ -97,11 +92,18 @@ def _runtime_nodes_for_run(
     if run is None or run.get("type") != "Run":
         raise ACGError(f"runtime Run does not exist: {run_id}")
 
-    contained_ids = {
-        edge["to"]
-        for edge in graph["edges"]
-        if edge["type"] == "contains" and edge["from"] == run_id
-    }
+    children: dict[str, list[str]] = defaultdict(list)
+    for edge in graph["edges"]:
+        if edge["type"] == "contains":
+            children[edge["from"]].append(edge["to"])
+    contained_ids: set[str] = set()
+    frontier = [run_id]
+    while frontier:
+        scope_id = frontier.pop()
+        for child_id in sorted(children.get(scope_id, []), reverse=True):
+            if child_id not in contained_ids:
+                contained_ids.add(child_id)
+                frontier.append(child_id)
     runtime_nodes = [
         nodes[node_id]
         for node_id in contained_ids
@@ -111,6 +113,13 @@ def _runtime_nodes_for_run(
     ]
     runtime_nodes.sort(key=_selection_key)
     return run, runtime_nodes
+
+
+def runtime_nodes_for_run(graph: dict[str, Any], run_id: str) -> list[dict[str, Any]]:
+    """Return runtime-managed descendants of a Run without executing anything."""
+
+    _, nodes = _runtime_nodes_for_run(graph, run_id)
+    return nodes
 
 
 def _find_precedes_cycle(
@@ -157,10 +166,22 @@ def _find_precedes_cycle(
 
 def _approval_covers(action: dict[str, Any], approval: dict[str, Any]) -> bool:
     action_scope = str(action.get("attrs", {}).get("authorized_scope", "")).strip()
-    approval_scope = str(approval.get("attrs", {}).get("scope", "")).strip()
-    if not action_scope or not approval_scope:
+    raw_scope = approval.get("attrs", {}).get("scope", "")
+    if not action_scope or raw_scope is None:
         return False
-    return approval_scope == "*" or action_scope.casefold() in approval_scope.casefold()
+    if isinstance(raw_scope, list):
+        approval_scopes = {
+            str(item).strip().casefold()
+            for item in raw_scope
+            if isinstance(item, str) and item.strip()
+        }
+    else:
+        approval_scopes = {
+            item.strip().casefold()
+            for item in re.split(r"[,;\n]", str(raw_scope))
+            if item.strip()
+        }
+    return "*" in approval_scopes or action_scope.casefold() in approval_scopes
 
 
 def _context_packet(
@@ -437,15 +458,12 @@ def build_runtime_snapshot(
 
 
 def build_runtime_catalog(graph: dict[str, Any]) -> dict[str, Any]:
-    run_ids: list[str] = []
     nodes = {node["id"]: node for node in graph["nodes"]}
-    for edge in graph["edges"]:
-        if (
-            edge["type"] == "contains"
-            and nodes.get(edge["from"], {}).get("type") == "Run"
-            and nodes.get(edge["to"], {}).get("attrs", {}).get("runtime_managed") is True
-        ):
-            run_ids.append(edge["from"])
+    run_ids = [
+        run["id"]
+        for run in graph["nodes"]
+        if run["type"] == "Run" and runtime_nodes_for_run(graph, run["id"])
+    ]
     unique_run_ids = sorted(
         set(run_ids),
         key=lambda item: (nodes[item].get("first_sequence", 0), item),
