@@ -1,10 +1,14 @@
 from __future__ import annotations
 
+import io
 import json
 import tempfile
 import unittest
+from contextlib import redirect_stdout
+from datetime import datetime
 from pathlib import Path
 
+from agent_case_graph.cli import main
 from agent_case_graph.ledger import append_event, load_events, write_new_ledger
 from agent_case_graph.inference import infer_workflow
 from agent_case_graph.lint import lint_graph
@@ -36,6 +40,56 @@ class AgentCaseGraphTests(unittest.TestCase):
         self.assertEqual([], lint_graph(graph))
         self.assertEqual("replay-0.1", graph["replay"]["protocol_version"])
         self.assertNotIn("spatial", graph)
+
+    def test_init_case_then_immediate_record_keeps_timestamps_monotonic(self) -> None:
+        ledger = self.root / "events.jsonl"
+        with redirect_stdout(io.StringIO()):
+            self.assertEqual(
+                0,
+                main(
+                    [
+                        "init-case",
+                        "--ledger",
+                        str(ledger),
+                        "--case-id",
+                        "TIMESTAMP-001",
+                        "--title",
+                        "Timestamp ordering regression",
+                        "--capture-mode",
+                        "synthetic",
+                    ]
+                ),
+            )
+            self.assertEqual(
+                0,
+                main(
+                    [
+                        "record-node",
+                        "--ledger",
+                        str(ledger),
+                        "--case-id",
+                        "TIMESTAMP-001",
+                        "--run-id",
+                        "run:TIMESTAMP-001:001",
+                        "--capture-mode",
+                        "synthetic",
+                        "--node-id",
+                        "goal:timestamp",
+                        "--node-type",
+                        "Goal",
+                        "--label",
+                        "Append immediately after init-case",
+                    ]
+                ),
+            )
+
+        timestamps = [
+            datetime.fromisoformat(event["occurred_at"])
+            for event in load_events(ledger)
+        ]
+        self.assertTrue(
+            all(previous <= current for previous, current in zip(timestamps, timestamps[1:]))
+        )
 
     def test_trace_model_uses_paper_layers_and_preserves_source_records(self) -> None:
         events = load_events(QUICKSTART)
