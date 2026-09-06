@@ -459,7 +459,17 @@ class AgentCaseGraphTests(unittest.TestCase):
         model = json.loads((out / "trace-model.json").read_text(encoding="utf-8"))
         puml = (out / "trace.puml").read_text(encoding="utf-8")
         sequence_puml = (out / "sequence.puml").read_text(encoding="utf-8")
-        html = (out / "graph.html").read_text(encoding="utf-8")
+        html = (out / "workbench-legacy.html").read_text(encoding="utf-8")
+        workbench = (out / "workbench.html").read_text(encoding="utf-8")
+        self.assertIn('id="workbenchData"', workbench)
+        self.assertIn('id="scopeSelect"', workbench)
+        self.assertTrue((out / "workbench-model.json").is_file())
+        reader_html = (out / "reader.html").read_text(encoding="utf-8")
+        self.assertIn('id="storyMap"', (out / "graph.html").read_text(encoding="utf-8"))
+        self.assertEqual("key-path-graph", receipt["display"]["primary_view"])
+        self.assertIn('id="readerContent"', reader_html)
+        self.assertIn('href="workbench.html"', reader_html)
+        self.assertTrue((out / "review-model.json").is_file())
         for node in model["nodes"]:
             if node["primary"]:
                 self.assertIn(node["label"][:92], puml)
@@ -570,7 +580,7 @@ class AgentCaseGraphTests(unittest.TestCase):
         graph = project_events(events)
         out = self.root / "generated"
         write_projection(out, graph=graph, events=events, findings=[], title="Wide rank")
-        html = (out / "graph.html").read_text(encoding="utf-8")
+        html = (out / "workbench-legacy.html").read_text(encoding="utf-8")
         self.assertIn("maxColumns=3", html)
         self.assertIn("crossingReducedRanks", html)
         self.assertIn("function routedEdges", html)

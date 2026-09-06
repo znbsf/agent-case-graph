@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+  <title>__TITLE__</title>
+  <style>__STYLE__</style>
+</head>
+<body>
+  <a class="skip-link" href="#storyMap">跳到图 / Skip to graph</a>
+  <header class="topbar">
+    <a class="brand" href="graph.html" id="brand">CASE / GRAPH</a>
+    <nav>
+      <a id="readerLink" href="reader.html">阅读页</a>
+      <a id="advancedLink" href="workbench.html">完整关系</a>
+      <label class="sr-only" for="storyLanguage">显示语言 / Language</label>
+      <select id="storyLanguage"><option value="zh-CN">中文</option><option value="en-US">English</option></select>
+    </nav>
+  </header>
+  <main>
+    <section class="intro">
+      <p id="eyebrow" class="eyebrow"></p>
+      <h1 id="storyTitle"></h1>
+      <p id="coverageNotice" class="coverage-notice"></p>
+      <div class="map-tools">
+        <p id="mapLegend" class="legend"></p>
+        <label id="branchesLabel"><input type="checkbox" id="showBranches" checked><span id="branchesText"></span></label>
+        <button id="collapseSelection" type="button"></button>
+      </div>
+    </section>
+    <div id="columnLabels" class="column-labels" aria-hidden="true"></div>
+    <section id="storyMap" aria-label="关键路径与旁支 / Main path and branches"></section>
+    <p id="mapFootnote" class="footnote"></p>
+    <details id="globalEvidence"><summary id="globalEvidenceTitle"></summary><div id="globalEvidenceBody"></div></details>
+    <p class="sr-only" id="announcer" aria-live="polite"></p>
+  </main>
+  <noscript>请启用 JavaScript 查看离线图。机器可读数据在 story-model.json，原始记录在 graph.json。</noscript>
+  <script id="storyData" type="application/json">__DATA__</script>
+  <script>__SCRIPT__</script>
+</body>
+</html>

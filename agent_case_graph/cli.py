@@ -18,10 +18,10 @@ from .graph_runtime import (
 )
 from .importer import import_issue_events
 from .inference import infer_workflow
-from .ledger import append_event, atomic_write_text, canonical_json, sha256_file, write_new_ledger
+from .ledger import append_event, atomic_write_text, canonical_json, read_ledger_snapshot, write_new_ledger
 from .lint import lint_graph
 from .localization import load_display_locales
-from .model import ACGError, SCHEMA_VERSION, load_events
+from .model import ACGError, CAPTURE_MODES, SCHEMA_VERSION, load_events
 from .projector import project_events
 from .renderer import write_projection
 from .runtime import (
@@ -214,8 +214,8 @@ def _cmd_validate_ledger(args: argparse.Namespace) -> int:
 
 
 def _load_project_lint(ledger: Path) -> tuple[list[dict[str, Any]], dict[str, Any], list[dict[str, Any]]]:
-    events = load_events(ledger)
-    graph = project_events(events, ledger_path=ledger)
+    events, digest = read_ledger_snapshot(ledger)
+    graph = project_events(events, ledger_path=ledger, ledger_sha256=digest)
     findings = lint_graph(graph)
     return events, graph, findings
 
@@ -225,8 +225,8 @@ def _load_history_graphs(ledgers: Sequence[Path]) -> list[dict[str, Any]]:
 
     graphs: list[dict[str, Any]] = []
     for ledger in ledgers:
-        events = load_events(ledger)
-        graphs.append(project_events(events, ledger_path=ledger))
+        events, digest = read_ledger_snapshot(ledger)
+        graphs.append(project_events(events, ledger_path=ledger, ledger_sha256=digest))
     return graphs
 
 
@@ -254,6 +254,7 @@ def _cmd_project(args: argparse.Namespace) -> int:
         title=title,
         display_locales=display_locales,
         default_locale=args.default_locale,
+        presentation=json.loads(args.presentation.read_text(encoding="utf-8")) if args.presentation else None,
     )
     print(json.dumps(receipt, ensure_ascii=False, indent=2))
     has_errors = receipt["lint"]["errors"] > 0
@@ -289,6 +290,9 @@ def _cmd_step_status(args: argparse.Namespace) -> int:
         to_status=args.status,
         run_id=args.run_id,
     )
+    capture_mode = before.get("capture_mode")
+    if not isinstance(capture_mode, str) or capture_mode not in CAPTURE_MODES:
+        raise ACGError("checkpoint requires a Run with an explicit capture_mode")
     from_status = str(node.get("attrs", {}).get("status", "pending"))
     attempt = int(node.get("attrs", {}).get("attempt", 0) or 0)
     if args.status == "running":
@@ -300,7 +304,7 @@ def _cmd_step_status(args: argparse.Namespace) -> int:
         kind="node.recorded",
         actor_type=args.actor_type,
         actor_id=args.actor_id,
-        capture_mode="live",
+        capture_mode=capture_mode,
         source_refs=args.source_ref,
         payload={
             "node": {
@@ -318,9 +322,10 @@ def _cmd_step_status(args: argparse.Namespace) -> int:
         },
         run_id=before["run_id"],
         occurred_at=args.occurred_at,
+        expected_sequence=len(events),
+        expected_sha256=graph["source_ledger"]["sha256"],
     )
-    updated_events = load_events(args.ledger)
-    updated_graph = project_events(updated_events, ledger_path=args.ledger)
+    updated_graph = project_events(events + [event])
     after = build_runtime_snapshot(updated_graph, run_id=before["run_id"])
     print(
         json.dumps(
@@ -366,7 +371,7 @@ def _cmd_record_recommendation(args: argparse.Namespace) -> int:
     selected_run_id = advice.get("run_id")
     if not isinstance(selected_run_id, str) or not selected_run_id:
         raise ACGError("cannot record a runtime recommendation without a selected Run")
-    source_hash = sha256_file(args.ledger)
+    source_hash = graph["source_ledger"]["sha256"]
     recommendation_id = f"decision:runtime-recommendation:{events[0]['case_id']}:{len(events) + 1}"
     event = append_event(
         args.ledger,
@@ -388,6 +393,8 @@ def _cmd_record_recommendation(args: argparse.Namespace) -> int:
         },
         run_id=selected_run_id,
         occurred_at=args.occurred_at,
+        expected_sequence=len(events),
+        expected_sha256=source_hash,
     )
     print(
         json.dumps(
@@ -455,6 +462,8 @@ def _cmd_claim_status(args: argparse.Namespace) -> int:
         },
         run_id=selected_run_id,
         occurred_at=args.occurred_at,
+        expected_sequence=len(events),
+        expected_sha256=graph["source_ledger"]["sha256"],
     )
     print(
         json.dumps(
@@ -620,6 +629,7 @@ def build_parser() -> argparse.ArgumentParser:
     project.add_argument("--out-dir", required=True, type=Path)
     project.add_argument("--title")
     project.add_argument("--default-locale", default="zh-CN")
+    project.add_argument("--presentation", type=Path, help="optional ledger-hash-bound graph presentation JSON (display only)")
     project.add_argument("--allow-errors", action="store_true")
     project.set_defaults(func=_cmd_project)
 

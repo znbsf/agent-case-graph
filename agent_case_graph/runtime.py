@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import defaultdict, deque
 import re
 from typing import Any
 
@@ -67,6 +67,26 @@ def _node_summary(node: dict[str, Any], **extra: Any) -> dict[str, Any]:
     for key in ("executor", "mutating", "authorized_scope", "priority"):
         if key in attrs:
             summary[key] = attrs[key]
+    # Keep actionable references, never inline arbitrary logs or tool payloads.
+    references = {
+        key: attrs[key]
+        for key in ("path", "source_path", "source_uri", "sha256", "input_ref", "output_ref")
+        if isinstance(attrs.get(key), str) and attrs[key]
+    }
+    for key in ("input_refs", "output_refs", "acceptance_criteria"):
+        value = attrs.get(key)
+        if isinstance(value, str):
+            references[key] = value
+        elif isinstance(value, list) and all(isinstance(item, str) for item in value):
+            references[key] = list(value)
+    if references:
+        summary["references"] = references
+    provenance = node.get("provenance", {})
+    source_refs = provenance.get("source_refs", [])
+    if source_refs:
+        summary["source_refs"] = list(source_refs)
+    if node.get("event_ids"):
+        summary["event_ids"] = list(node["event_ids"])
     summary.update(extra)
     return summary
 
@@ -190,8 +210,10 @@ def _context_packet(
     run: dict[str, Any],
     node: dict[str, Any],
     predecessor_ids: list[str],
+    nodes: dict[str, dict[str, Any]],
+    outgoing: dict[str, list[dict[str, Any]]],
+    incoming: dict[str, list[dict[str, Any]]],
 ) -> dict[str, Any]:
-    nodes = {item["id"]: item for item in graph["nodes"]}
     related: dict[str, dict[str, Any]] = {}
 
     def include(node_id: str, relation: str, direction: str) -> None:
@@ -209,7 +231,7 @@ def _context_packet(
     include(graph["root_id"], "case", "scope")
     include(run["id"], "run", "scope")
 
-    for edge in graph["edges"]:
+    for edge in outgoing[node["id"]] + incoming[node["id"]]:
         if edge["type"] not in CONTEXT_EDGE_TYPES:
             continue
         if edge["from"] == node["id"]:
@@ -217,14 +239,14 @@ def _context_packet(
         elif edge["to"] == node["id"]:
             include(edge["from"], edge["type"], "incoming")
 
-    lineage_queue = [(node["id"], 0)]
+    lineage_queue = deque([(node["id"], 0)])
     lineage_seen = {node["id"]}
     while lineage_queue:
-        current_id, depth = lineage_queue.pop(0)
+        current_id, depth = lineage_queue.popleft()
         if depth >= 3:
             continue
-        for edge in graph["edges"]:
-            if edge["type"] not in CONTEXT_EDGE_TYPES or edge["to"] != current_id:
+        for edge in incoming[current_id]:
+            if edge["type"] not in CONTEXT_EDGE_TYPES:
                 continue
             source_id = edge["from"]
             include(source_id, edge["type"], "context_lineage")
@@ -239,25 +261,28 @@ def _context_packet(
 
     for predecessor_id in predecessor_ids:
         include(predecessor_id, "precedes", "incoming")
-        for edge in graph["edges"]:
-            if edge["type"] == "produces" and edge["from"] == predecessor_id:
+        for edge in outgoing[predecessor_id]:
+            if edge["type"] == "produces":
                 include(edge["to"], "produces", "predecessor_output")
 
-    for edge in graph["edges"]:
-        if edge["from"] == run["id"] and edge["type"] in {"targets", "uses", "references"}:
+    for edge in outgoing[run["id"]]:
+        if edge["type"] in {"targets", "uses", "references"}:
             include(edge["to"], edge["type"], "run_scope")
 
     context_nodes = sorted(
         related.values(), key=lambda item: (item.get("first_sequence") or 0, item["id"])
     )
     full_count = len(graph["nodes"])
-    selected_count = len(context_nodes)
+    selected_count = len(context_nodes) + 1
     reduction = 0.0 if full_count == 0 else round(1 - selected_count / full_count, 4)
     return {
+        "task": _node_summary(node),
         "nodes": context_nodes,
         "selected_node_count": selected_count,
         "full_graph_node_count": full_count,
         "context_reduction_ratio": reduction,
+        "node_reduction_ratio": reduction,
+        "measurement_basis": "node_count",
     }
 
 
@@ -307,7 +332,8 @@ def build_runtime_snapshot(
             }
         )
         context = _context_packet(
-            graph, run=run, node=node, predecessor_ids=predecessor_ids
+            graph, run=run, node=node, predecessor_ids=predecessor_ids,
+            nodes=node_by_id, outgoing=outgoing, incoming=incoming,
         )
         base = _node_summary(
             node,
@@ -371,22 +397,30 @@ def build_runtime_snapshot(
                 )
 
         attrs = node.get("attrs", {})
-        if node["type"] == "Action" and attrs.get("mutating") is True:
+        if attrs.get("mutating") is True:
             target_edges = [
-                edge for edge in outgoing[node_id] if edge["type"] in {"targets", "modifies"}
+                edge for edge in outgoing[node_id]
+                if (
+                    edge["type"] == "targets"
+                    and node_by_id.get(edge["to"], {}).get("type") == "Target"
+                ) or (
+                    edge["type"] == "modifies"
+                    and node_by_id.get(edge["to"], {}).get("type") in {"Target", "Artifact"}
+                )
             ]
             if not target_edges:
                 reasons.append(
                     {
                         "code": "target_missing",
-                        "message": "Mutating Action has no explicit Target.",
+                        "message": "Mutating node requires targets -> Target or modifies -> Target/Artifact.",
                     }
                 )
 
             approval_nodes = [
                 node_by_id[edge["to"]]
                 for edge in outgoing[node_id]
-                if edge["type"] == "approved_by" and edge["to"] in node_by_id
+                if edge["type"] == "approved_by"
+                and node_by_id.get(edge["to"], {}).get("type") == "Approval"
             ]
             granted = [
                 approval
@@ -398,7 +432,7 @@ def build_runtime_snapshot(
                 reasons.append(
                     {
                         "code": "approval_missing",
-                        "message": "Mutating Action has no Approval.",
+                        "message": "Mutating node has no typed Approval.",
                     }
                 )
             elif not granted:
@@ -413,14 +447,14 @@ def build_runtime_snapshot(
                 reasons.append(
                     {
                         "code": "case_not_executing",
-                        "message": f"Mutating Action requires Case state execute, got {case_state or 'unset'}.",
+                        "message": f"Mutating node requires Case state execute, got {case_state or 'unset'}.",
                     }
                 )
-            if str(run.get("attrs", {}).get("capture_mode", "live")) != "live":
+            if run.get("attrs", {}).get("capture_mode") != "live":
                 reasons.append(
                     {
                         "code": "non_live_mutation",
-                        "message": "Mutating Action can run only in a live Run.",
+                        "message": "Mutating node requires an explicitly live Run.",
                     }
                 )
 
@@ -439,6 +473,7 @@ def build_runtime_snapshot(
         "status": "invalid" if cycle else "configured",
         "run_id": run["id"],
         "run_label": run["label"],
+        "capture_mode": run.get("attrs", {}).get("capture_mode"),
         "case_state": case_state,
         "cycle": cycle,
         "ready": ready,
@@ -524,7 +559,7 @@ def validate_step_transition(
         if current in SUCCESS_STATUSES | ACTIVE_STATUSES:
             raise ACGError(f"cannot skip node from status {current}")
         if entry.get("mutating") is True:
-            raise ACGError("mutating Action cannot be silently skipped")
+            raise ACGError("mutating node cannot be silently skipped")
 
     nodes = {node["id"]: node for node in graph["nodes"]}
     return nodes[node_id], snapshot
@@ -550,7 +585,7 @@ def render_runtime_snapshot(snapshot: dict[str, Any]) -> str:
         lines.append(
             f"READY   {item['id']}: {item['label']} "
             f"(context {context['selected_node_count']}/{context['full_graph_node_count']}, "
-            f"reduction {context['context_reduction_ratio']:.1%})"
+            f"node reduction {context['node_reduction_ratio']:.1%})"
         )
     for item in snapshot["running"]:
         lines.append(f"RUNNING {item['id']}: {item['label']}")

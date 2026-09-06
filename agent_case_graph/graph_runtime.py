@@ -15,9 +15,7 @@ from typing import Any, Iterable
 
 from .model import ACGError
 from .runtime import (
-    ACTIVE_STATUSES,
     EXECUTABLE_NODE_TYPES,
-    FAILED_STATUSES,
     SUCCESS_STATUSES,
     build_runtime_snapshot,
 )
@@ -40,18 +38,15 @@ EVIDENCE_NODE_TYPES = frozenset(
     }
 )
 
-_EVIDENCE_PENDING_STATUSES = frozenset(
-    {
-        "pending",
-        "planned",
-        "expected",
-        "missing",
-        "unavailable",
-        "partial",
-        *ACTIVE_STATUSES,
-        *FAILED_STATUSES,
-    }
-)
+EVIDENCE_COMPLETE_STATUSES = {
+    "Artifact": frozenset({"recorded", "captured", "available", "completed", "verified"}),
+    "EnvironmentSnapshot": frozenset({"recorded", "captured", "completed", "verified"}),
+    "Observation": frozenset({"recorded", "observed", "confirmed", "completed", "verified"}),
+    "ToolOutput": frozenset({"completed", "succeeded"}),
+    "Verification": frozenset({"completed", "succeeded", "passed", "verified"}),
+    "VerificationReceipt": frozenset({"completed", "succeeded", "passed", "verified"}),
+    "AcceptanceCriterion": frozenset({"satisfied", "passed", "verified"}),
+}
 
 
 def _status(node: dict[str, Any]) -> str:
@@ -225,20 +220,17 @@ def _evidence_state(node: dict[str, Any]) -> tuple[bool, str | None]:
         return False, "unsupported_evidence_node_type"
     if _is_derived(node):
         return False, "derived_evidence_not_confirmable"
-    status = _status(node)
-    if status in _EVIDENCE_PENDING_STATUSES:
+    raw_status = node.get("attrs", {}).get("status")
+    if not isinstance(raw_status, str) or raw_status.strip().lower() not in EVIDENCE_COMPLETE_STATUSES[node["type"]]:
         return False, "evidence_not_complete"
     return True, None
 
 
 def _requirement_count(attrs: dict[str, Any]) -> tuple[int, str | None]:
     value = attrs.get("minimum_support_count", 1)
-    try:
-        count = int(value)
-    except (TypeError, ValueError):
+    if not isinstance(value, int) or isinstance(value, bool) or value < 1:
         return 1, "invalid_minimum_support_count"
-    # A confirmed claim always needs at least one explicit evidence relation.
-    return max(1, count), None
+    return value, None
 
 
 def _relation_summary(edge: dict[str, Any]) -> dict[str, Any]:
@@ -378,13 +370,13 @@ def build_claim_gate(
     missing: list[dict[str, Any]] = []
     if count_error:
         missing.append({"code": count_error, "claim_id": claim_id})
-    if len(usable_supports) < minimum_support_count:
+    if len(usable_ids) < minimum_support_count:
         missing.append(
             {
                 "code": "insufficient_support_count",
                 "claim_id": claim_id,
                 "required": minimum_support_count,
-                "available": len(usable_supports),
+                "available": len(usable_ids),
             }
         )
     for support in unusable_supports:
@@ -598,7 +590,7 @@ def _run_success_evidence(
             and receipt is not None
             and receipt.get("type") == "VerificationReceipt"
             and not _is_derived(edge)
-            and not _is_derived(receipt)
+            and _evidence_state(receipt)[0]
         ):
             continue
         receipt_owners = _node_run_owners(receipt, owner_index)

@@ -237,7 +237,7 @@ class GraphRuntimeTests(unittest.TestCase):
                     {"runtime_managed": True, "status": "completed", "reuse_key": "collect-log"},
                     "reconstructed",
                 ),
-                _node("receipt", "VerificationReceipt", "Receipt", 6, {}, "reconstructed"),
+                _node("receipt", "VerificationReceipt", "Receipt", 6, {"status": "verified"}, "reconstructed"),
                 _node(
                     "derived-receipt",
                     "VerificationReceipt",
@@ -271,6 +271,14 @@ class GraphRuntimeTests(unittest.TestCase):
         self.assertEqual("advisory_only_non_live_history", verified_match["reuse_mode"])
         self.assertEqual("reconstructed-evidence", verified_match["provenance"]["actualness"])
         self.assertEqual("historical_subgraph", matches["other-run"]["qualification"])
+        for receipt_status in (None, "failed", "blocked", "invalid"):
+            with self.subTest(receipt_status=receipt_status):
+                receipt = next(node for node in history["nodes"] if node["id"] == "receipt")
+                receipt["attrs"] = {} if receipt_status is None else {"status": receipt_status}
+                unverified = build_graph_runtime_advice(current, run_id="run", history_graphs=[history])
+                match = next(item for item in unverified["historical_reuse"]["matches"]
+                             if item["history_run_id"] == "history-run")
+                self.assertEqual("historical_subgraph", match["qualification"])
 
     def test_path_review_compares_derived_recommendation_with_later_ledger_records(self) -> None:
         events = copy.deepcopy(load_events(QUICKSTART))

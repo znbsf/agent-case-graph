@@ -30,6 +30,7 @@ def project_events(
     events: list[dict[str, Any]],
     *,
     ledger_path: str | Path | None = None,
+    ledger_sha256: str | None = None,
 ) -> dict[str, Any]:
     declaration = events[0]["graph"]
     nodes: dict[str, dict[str, Any]] = {}
@@ -113,7 +114,7 @@ def project_events(
     source_ledger: dict[str, Any] | None = None
     if ledger_path is not None:
         source = Path(ledger_path)
-        source_ledger = {"name": source.name, "sha256": sha256_file(source)}
+        source_ledger = {"name": source.name, "sha256": ledger_sha256 or sha256_file(source)}
 
     node_list = sorted(nodes.values(), key=lambda item: (item["first_sequence"], item["id"]))
     edge_list = sorted(edges.values(), key=lambda item: (item["first_sequence"], item["id"]))

@@ -4,23 +4,28 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg)](https://www.python.org/)
 
-**Append-only agent trace protocol with a paper-inspired layered DAG review surface.**
+**Append-only agent traces with a graph-first key path, visible outcomes and source-bound local expansion.**
 
 Agent Case Graph（ACG）把 Agent 的操作、证据、产物和结论先保存为 append-only JSONL，再投影为同一个 `paper-trace-0.1` 模型：
 
 - `trace.puml`：可评审、可版本比较的 PlantUML 静态基准图；
 - `sequence.puml`：按显式时序关系线性化的 PlantUML 单次执行投影，保留源记录号；
-- `graph.html`：自包含三栏工作台，支持 Loop Overview / Sequence / Workflow / Evidence / Trace 下钻；
+- `graph.html`：默认主路径图；主路径与旁支、节点内结果、点击后的局部动作 → 结果 → 结论；
+- `reader.html`：辅助阅读页，保留逐阶段的问题、动作、结果、边界与来源；
+- `story-model.json`：图形展示模型，可选来源绑定的主路径 / 旁支与结果短句；
+- `workbench.html`：证据工作台，阶段总览 / 阶段关系 / 证据链 / 单次执行 / 原始记录；
+- `workbench-model.json`：无损展示分区、聚合边的原始见证与研究依据；`workbench-legacy.html` 保留旧技术视图用于对照；
+- `review-model.json`：有源节点引用的阶段阅读索引，不回写账本、不产生新的验收结论；
 - `loop-model.json`：由 canonical graph 派生的双循环聚合索引；
 - `sequence-model.json`：单次执行生命线、步骤和 ExecutionIteration 作用域；
-- `trace-model.json`：全部投影视图共享的唯一展示契约；
+- `trace-model.json`：技术图共享的展示模型，阅读索引在其聚合关系上继续派生；
 - `graph.json`：完整 canonical typed graph。
 
-新版刻意不提供 3D 平面、五套重复工作台或自动布局语义。图只回答三个问题：
+默认图先回答三个问题，原始记录和完整关系按需查看：
 
-1. 这项工作经历了哪些阶段？
-2. 结论由哪些动作、产物和检查支持？
-3. 选中一个节点后，能否回到原始 Trace Record？
+1. 最初想解决什么，记录停在哪里？
+2. 每一步做了什么、得到什么结果，为什么调整方向？
+3. 结论的证据和边界是什么，哪些信息仍然缺失？
 
 ## 论文对应
 
@@ -30,7 +35,9 @@ Agent Case Graph（ACG）把 Agent 的操作、证据、产物和结论先保存
 - [LEDGER, arXiv:2608.18398](https://arxiv.org/abs/2608.18398)：`Trace Records -> Evidence Nodes -> Workflow Nodes`，以及 `context / plan / inspect / execute / validate / claim` 六阶段；
 - [AgentDiagnose, EMNLP 2025](https://aclanthology.org/2025.emnlp-demos.15/)：不同诊断视图联动，但不把所有分析塞进核心 DAG。
 
-这里借鉴的是可读性和审计结构，不复制论文界面或数据。
+这里借鉴的是可读性和审计结构，不复制论文界面或数据，也不把论文结果当成本实现的验收。
+新版工作台还参考 Shneiderman 的按需详情原则与 Gansner 等人的有向图布局方法；
+逐项原文、实现选择、测试和限制见 [工作台结构依据](docs/workbench-research-basis.md)。LEDGER 是预印本。
 
 ![PlantUML paper-trace quickstart](docs/assets/paper-trace-quickstart.svg)
 
@@ -86,15 +93,34 @@ acg project examples/quickstart/events.jsonl \
 
 PowerShell 用户可以直接运行仓库根目录的 `acg.ps1`。
 
-## HTML 的五个粒度
+## 先看路径和结果，再展开证据
 
-- **Loop Overview**：把外层用户对话轮次与内层 Agent 执行迭代分开显示；点击聚合点可查看成员并展开。
-- **Sequence**：选择一个 Execution Iteration，查看 User / Agent / Tool / Evidence / Evaluator 之间的单次执行顺序。
-- **Workflow**：六阶段自上而下因果 DAG，显式显示 `frames / invokes / produces / supersedes` 等关键关系。
-- **Evidence**：只保留可审计节点及 evidence/provenance 关系，从 Claim 反查支持链。
-- **Trace**：按 Ledger `sequence` 显示原始记录；顺序不是因果。
+打开 `graph.html`，直接看主路径和节点内的结果；点击节点在原位置下方展开动作、结果、结论和反证，不切走全图。
+虚线只表示复盘顺序 / 主题分组；局部箭头来自真实 typed edge。未知结果不会从标题的情绪或 PASS 字样猜测。
+`reader.html` 保留长文阅读；两种入口都使用同一阶段作用域，不借共享 Case/Run 引入全图。
 
-三栏固定职责：左侧原始 Trace，中间 DAG，右侧选中节点的属性、工具、产出、上下游关系和源记录。
+需要编辑主路径和旁支时，显式传入 `--presentation graph-presentation.json`。
+该可选 JSON 必须声明 `version: "case-story-0.1"`、匹配账本的 `source_sha256` 和 `cards`。
+每张卡片包含唯一 `id`、`title`、`stage_ids` / `node_ids`，旁支用 `parent_id` 指向主节点；所有阶段必须恰好出现一次。
+可选 `summary`、`boundary`、`results`（最多 3 条）仅改变展示；每条结果含 `text`、范围内的 `source_ids` 和 `tone`。
+`tone` 可选 `recorded / gain / open / negative / hypothesis / paused`，不是新的运行验收状态。
+哈希、引用、覆盖与父子关系均校验；没有 presentation 时按阶段展示源记录，不自动猜测旁支和成败。
+短句和引用仍需人工审核：结构校验能阻止失配，不能证明文字总结正确。
+
+历史重建、合成示例以及已记录的正文缺失数量在页首显示。页面不会通过解析描述中的 PASS 字样来推断成功；
+也不会把上一阶段用来影响计划的输出当成下一阶段自己产生的结果。阶段只是阅读分组，不等于原生执行迭代。
+
+右上角进入 `workbench.html`，保留以下五个技术视图；技术视图可返回主路径图：
+
+- **阶段总览**：先看阶段与源结论；每条聚合边均可追到原始边，不按位置补关系。
+- **阶段关系**：同阶段的目标、动作、结果、结论放在一起；展开后局部自上而下，关联上下文用虚框标出。
+- **证据链**：从 Claim 反查支持、反证、产物和检查；保留原状态，不新增验收。
+- **单次执行**：按阶段选择对应执行作用域，查看 User / Agent / Tool / Evidence / Evaluator 的时序。
+- **原始记录**：按 Ledger `sequence` 分页查看全部事件；顺序不是因果。
+
+左侧是可收起的阶段导航，中间优先留给关系图，右侧详情只在点击后出现。
+卡片完整换行；搜索、单跳聚焦、真实缩放和平移帮助定位。默认收起结构边，来源始终可查。
+旧 Loop Overview 和六阶段 Workflow 保留在 `workbench-legacy.html`，不是新版默认布局。
 
 Sequence 负责回答“单次执行先后发生了什么”；Workflow / Evidence 负责回答“为什么这样计划、什么证据改变了计划、哪些检查支撑结论”。两者来自同一 canonical graph，互为投影而不是互相替代。
 
@@ -123,6 +149,7 @@ DialogueRound (外层：用户输入/反馈 -> Goal 修订 -> AgentResponse)
 `graph-runtime-0.1` 是 canonical graph 的只读控制面：它不会调用 Tool，也不会把推断写成原生 telemetry。
 
 - 只有 `Run` 作用域内显式标记 `runtime_managed=true` 的 `Action`、`ToolCall`、`Step`、`Verification` 才进入 Runtime。`ToolCall` 可以作为安全的下一步建议，但建议不等于已经调用。
+- 所有 `mutating=true` 的可执行节点共享门禁：显式 live Run、Case 处于 execute、scope 匹配的 granted Approval，以及 `targets -> Target` 或 `modifies -> Target/Artifact`。`approved_by` 指向其他节点类型、缺失采集模式或未批准的 ToolCall 都不能通过。
 - `acg advise` 汇总 Ready frontier、Claim 的缺失证据和可执行的 `Action`/`ToolCall`；候选到 Claim 的映射只沿已声明的 `produces -> supports/refutes` 关系，找不到作者声明的动作时会明确留空，而不会编造工具调用。
 - `Claim` / `RootCause` 的确认 gate 默认至少需要一条来自已完成、非 derived 证据节点的显式 `supports` 边；derived `supports` 关系也不能开启 gate。Claim、证据和支持关系必须唯一属于同一 `Run`（或三者均为 global），不会把其他 Run、global 或多 Run 证据自动借来确认。可在 Claim attrs 中加 `minimum_support_count`、`required_evidence_ids`、`required_evidence_types`、`required_capture_modes` 收紧条件；`refutes` 证据会阻止确认。`acg claim-status --status confirmed` 会执行此 gate，并在未传 `--run-id` 时只推断 Claim 的唯一 Run owner。
 - `acg record-recommendation` 把当时的建议快照 append 为 `Decision`，其中 `data_origin=derived`、`not_native_telemetry=true`、输入 Ledger SHA256、候选 ID 和 gate 摘要都会保留。之后的实际路径只从 Ledger 的后续 runtime node records 提取。
@@ -140,6 +167,12 @@ acg review-paths current-events.jsonl
 ```
 
 `project` 还会生成 `runtime-advice.json`。这是当前图状态的可再建派生物；它不替代 Ledger，也不证明动作实际发生过。
+
+`step-status`、`claim-status` 和 `record-recommendation` 在追加前，会在 Ledger 锁内检查输入快照的 sequence 与 SHA256。若验证后其他写入改变了 Ledger，命令拒绝提交，调用者需要重新读取并计算；不会自动重用旧授权或旧证据。`step-status` 的 Checkpoint 保留所属 Run 的采集模式，synthetic 演示不会被标记为 live。
+
+证据必须显式填写适合其类型的完成状态，例如 Observation 的 `confirmed`、ToolOutput 的 `completed`、Verification 的 `passed`。缺失、未知、blocked、skipped 状态均不能确认 Claim；历史成功路径也必须有明确完成的 VerificationReceipt。`minimum_support_count` 是正整数，按不同证据节点计数，重复 supports 边不增加证据数量。完整状态表见 [架构说明](docs/architecture.md#evidence-completion-states)。
+
+上下文包提供 `task`、相关节点、目标路径、输入/输出引用、来源记录和哈希，不内嵌完整工具日志。邻接关系复用一次构建的索引。`selected_node_count` 包括任务本身；`node_reduction_ratio` 和兼容字段 `context_reduction_ratio` 都按节点数量计算，`measurement_basis=node_count`，不代表 token 节省或任务成功率提升。
 
 ## 从图反推流程
 
@@ -193,6 +226,8 @@ python -m unittest discover -s tests -v
 python -m compileall -q agent_case_graph
 python -m pip wheel --no-deps --wheel-dir .artifacts/wheel .
 ```
+
+CI 覆盖 Windows / Ubuntu 的 Python 3.11–3.13，并单独检查浏览器离线页面。浏览器检查使用可选开发依赖，覆盖五个视图、节点与 Trace/详情联动、键盘选择，以及中英文 390×844 窄屏；详情栏在窄屏下移到画布下方。运行方法见 [Contributing](CONTRIBUTING.md#browser-checks)。这些 synthetic 检查验证功能行为，不构成真实 Agent 收益实验。
 
 设计细节见 [architecture.md](docs/architecture.md) 和 [paper visualization notes](docs/runtime-open-source-comparison.md)。
 
