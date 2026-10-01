@@ -201,6 +201,41 @@ This runner does not supervise descendant processes; use finite verification
 commands. A concurrent ledger edit refuses the append after execution and
 preserves the receipt. Inspect it instead of blindly retrying the command.
 
+### Recover a captured check after an append conflict
+
+New receipts carry an independent recovery binding to the original Case, live
+Run, proposal, ledger byte prefix and stable check ID. The conflict error prints
+the receipt path and its original `receipt_sha256`. After inspecting the receipt
+and command output, pass that original digest explicitly:
+
+```powershell
+acg recover-plan-check . --ledger .artifacts/project-loop/events.jsonl --plan-id plan:v1 --receipt .artifacts/project-checks/check-EXAMPLE/receipt.json --receipt-sha256 ORIGINAL_SHA256 --dry-run
+acg recover-plan-check . --ledger .artifacts/project-loop/events.jsonl --plan-id plan:v1 --receipt .artifacts/project-checks/check-EXAMPLE/receipt.json --receipt-sha256 ORIGINAL_SHA256
+acg review-project-plan . --ledger .artifacts/project-loop/events.jsonl --plan-id plan:v1
+```
+
+Replace both placeholders with the original conflict error's values; do not
+recompute the digest from an edited receipt. Recovery never executes its stored
+argv. It validates bounded receipt/output bytes, original identities and ledger
+prefix, then atomically attaches the same three nodes and six relationships as a
+normal check. Receipt/output integrity and repository freshness are checked again
+under the existing sequence/SHA-256 append lock. Both ledger and its adjacent lock
+must be ignored paths under `.artifacts/`, so that generated lock cannot change
+the repository observation. Dry run appends nothing and does not reserve a result.
+
+An intact, already linked check returns `already_recorded` without writing;
+incomplete or conflicting identities are refused. A newly recovered check cannot
+replace a criterion receipt recorded or updated since that check began, including
+a later failure. Inspect that competing result instead. Recovery records valid
+failed or stale evidence as history without upgrading its review status. Exit 0
+means recovery/noop/validation succeeded, not that the check or acceptance passed;
+refusals exit 2. Execution authorization and acceptance assessment remain false.
+
+Existing linked receipts still work with the unchanged check version. Older
+orphan receipts lacking the recovery binding require manual review. No recovery
+MCP write tool is exposed: the existing six read-only tools can inspect the
+restored result, and proposal-to-execution approval remains a separate gate.
+
 Feedback checks `verified_by`, `checks`, `invokes` and `produces` relationships,
 the recorded command identity, exclusively live provenance, receipt/output
 hashes, repository freshness and the latest receipt for each criterion. A newer

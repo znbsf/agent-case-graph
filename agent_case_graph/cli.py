@@ -19,6 +19,7 @@ from .planning import check_plan, prepare_plan
 from .project_profile import inspect_project
 from .project_query import query_project
 from .project_session import record_project_plan, review_project_plan, run_plan_check
+from .check_recovery import recover_plan_check
 from .renderer import write_projection
 from .runtime import (
     build_runtime_snapshot,
@@ -488,6 +489,12 @@ def _cmd_run_plan_check(args: argparse.Namespace) -> int:
     return 0 if result["outcome"] == "passed" else 1
 
 
+def _cmd_recover_plan_check(args: argparse.Namespace) -> int:
+    _project_result(recover_plan_check(args.workspace, args.ledger, plan_id=args.plan_id,
+                    receipt_path=args.receipt, receipt_sha256=args.receipt_sha256, dry_run=args.dry_run), None)
+    return 0
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="acg",
@@ -556,6 +563,15 @@ def build_parser() -> argparse.ArgumentParser:
     run_check.add_argument("--evidence-dir", default=".artifacts/project-checks")
     run_check.add_argument("--command", nargs=argparse.REMAINDER, required=True, help="explicit argv; put this option last; no shell is used")
     run_check.set_defaults(func=_cmd_run_plan_check)
+
+    recover = subparsers.add_parser("recover-plan-check", help="attach a pinned captured receipt without rerunning its command")
+    recover.add_argument("workspace", type=Path)
+    recover.add_argument("--ledger", required=True)
+    recover.add_argument("--plan-id", required=True)
+    recover.add_argument("--receipt", required=True, help="workspace-relative ignored .artifacts receipt.json")
+    recover.add_argument("--receipt-sha256", required=True, help="original digest reported after the check; do not recompute from changed evidence")
+    recover.add_argument("--dry-run", action="store_true", help="validate recovery without appending any events")
+    recover.set_defaults(func=_cmd_recover_plan_check)
 
     mcp = subparsers.add_parser("mcp", help="serve read-only project tools over MCP stdio (requires the mcp extra)")
     mcp.add_argument("--workspace-root", type=Path, help="explicit repository root; otherwise ACG_WORKSPACE_ROOT is required")

@@ -1,14 +1,18 @@
 from __future__ import annotations
 
 import asyncio
+import io
 import importlib.util
+import json
 import os
 import sys
 import unittest
 from pathlib import Path
+from contextlib import redirect_stderr, redirect_stdout
 from unittest.mock import patch
 
-from agent_case_graph.ledger import sha256_file, write_new_ledger
+from agent_case_graph import cli, project_session
+from agent_case_graph.ledger import append_event, sha256_file, write_new_ledger
 from agent_case_graph.cli import _initial_case_events
 from agent_case_graph.mcp_server import create_server, serve
 from agent_case_graph.model import ACGError
@@ -160,6 +164,62 @@ class MCPServerTests(RepositoryFixture):
                 self.assertIn("not a recorded project plan", wrong.content[0].text)
         asyncio.run(run())
         self.assertEqual(digest, sha256_file(path))
+
+    def test_real_stdio_reviews_cli_recovery_without_reexecuting_or_accepting(self) -> None:
+        from mcp.client import Client
+        from mcp.client.stdio import StdioServerParameters
+
+        ledger = ".artifacts/session/events.jsonl"
+        path = self.root / ledger
+        write_new_ledger(path, _initial_case_events(case_id="mcp-recovery", title="Recover a real captured check",
+            run_id="run:recovery", capture_mode="live", actor_type="agent", actor_id="test", source_refs=["test:mcp-recovery"]))
+        record_project_plan(self.root, self.plan(), ledger, plan_id="plan:recovery", run_id="run:recovery")
+        capture = project_session._capture
+
+        def conflict_after_capture(*args):
+            result = capture(*args)
+            append_event(path, case_id="mcp-recovery", kind="node.recorded", actor_type="tool", actor_id="test",
+                capture_mode="live", source_refs=["test:concurrent"], run_id="run:recovery",
+                payload={"node": {"id": "concurrent", "type": "Observation", "label": "Concurrent observation", "attrs": {}}})
+            return result
+
+        with patch.object(project_session, "_capture", side_effect=conflict_after_capture) as called:
+            with self.assertRaisesRegex(ACGError, "command finished; receipt preserved") as error:
+                run_plan_check(self.root, ledger, plan_id="plan:recovery", task_id="core-change", criterion=1,
+                    command=[sys.executable, "-c", "from pathlib import Path; Path('.artifacts/executed-once').write_text('once'); print('observed')"])
+            self.assertEqual(called.call_count, 1)
+        receipt = next((self.root / ".artifacts/project-checks").glob("*/receipt.json"))
+        digest = sha256_file(receipt)
+        self.assertIn("receipt_sha256=" + digest, str(error.exception))
+        argv = ["recover-plan-check", str(self.root), "--ledger", ledger, "--plan-id", "plan:recovery",
+                "--receipt", receipt.relative_to(self.root).as_posix(), "--receipt-sha256", digest]
+
+        async def run() -> None:
+            params = StdioServerParameters(command=sys.executable,
+                args=["-m", "agent_case_graph", "mcp", "--workspace-root", str(self.root)], cwd=ROOT)
+            async with Client(params, mode="legacy", read_timeout_seconds=20) as client:
+                tools = await client.list_tools()
+                self.assertEqual(len(tools.tools), 6)
+                self.assertTrue(all(tool.annotations.read_only_hint for tool in tools.tools))
+                before = sha256_file(path)
+                missing = await client.call_tool("acg_review_plan", {"ledger": ledger, "plan_id": "plan:recovery"})
+                self.assertEqual(missing.structured_content["tasks"][0]["criteria"][0]["status"], "missing_evidence")
+                self.assertEqual(before, sha256_file(path))
+                output, errors = io.StringIO(), io.StringIO()
+                with patch.object(project_session, "_capture", side_effect=AssertionError("recovery reran the command")):
+                    with redirect_stdout(output), redirect_stderr(errors):
+                        code = cli.main(argv)
+                self.assertEqual(code, 0, errors.getvalue())
+                self.assertEqual(json.loads(output.getvalue())["status"], "check_recovered")
+                after = sha256_file(path)
+                restored = await client.call_tool("acg_review_plan", {"ledger": ledger, "plan_id": "plan:recovery"})
+                self.assertFalse(restored.is_error)
+                self.assertEqual(restored.structured_content["status"], "checks_passed")
+                self.assertFalse(restored.structured_content["acceptance_assessed"])
+                self.assertFalse(restored.structured_content["execution_authorized"])
+                self.assertEqual(after, sha256_file(path))
+        asyncio.run(run())
+        self.assertEqual((self.root / ".artifacts/executed-once").read_text(), "once")
 
 
 if __name__ == "__main__":
