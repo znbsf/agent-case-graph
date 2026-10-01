@@ -13,7 +13,7 @@ import time
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from .ledger import append_events, atomic_write_text, canonical_json
 from .lint import lint_graph
@@ -24,6 +24,7 @@ from .projector import project_events
 
 SESSION_VERSION = "project-session-0.1"
 CHECK_VERSION = "project-check-0.1"
+RECOVERY_VERSION = "project-check-recovery-0.1"
 MAX_LEDGER_BYTES = 4_000_000
 MAX_OUTPUT_BYTES = 1_000_000
 
@@ -67,11 +68,14 @@ def _edge(edge_type: str, from_id: str, to_id: str) -> dict[str, Any]:
     }}
 
 
-def _append(path: Path, events: list[dict[str, Any]], digest: str, records: list[dict[str, Any]], run_id: str, refs: list[str]) -> list[dict[str, Any]]:
+def _append(path: Path, events: list[dict[str, Any]], digest: str, records: list[dict[str, Any]], run_id: str, refs: list[str],
+            *, validate_inputs: Callable[[], None] | None = None) -> list[dict[str, Any]]:
     def validate(combined: list[dict[str, Any]]) -> None:
         if sum(len(canonical_json(event).encode("utf-8")) + 1 for event in combined) > MAX_LEDGER_BYTES:
             raise ACGError("project session would exceed the 4 MB ledger limit")
         _clean(combined)
+        if validate_inputs:
+            validate_inputs()
 
     return append_events(
         path, case_id=events[0]["case_id"], records=records, actor_type="agent", actor_id="acg-project-session",
@@ -259,6 +263,10 @@ def run_plan_check(
         raise ACGError("evidence_dir must be an ignored directory under .artifacts/")
     capture_base.mkdir(parents=True, exist_ok=True)
     capture_dir = Path(tempfile.mkdtemp(prefix="check-", dir=capture_base))
+    anchor = _read(path, MAX_LEDGER_BYTES)
+    if hashlib.sha256(anchor).hexdigest() != digest:
+        raise ACGError("ledger changed before the check; reload and retry the command")
+    check_id = f"check:{uuid.uuid4().hex}"
     before = inspect_project(root)["snapshot_sha256"]
     started = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
     outcome, exit_code, output, total_bytes = _capture(root, command, timeout_seconds)
@@ -277,20 +285,42 @@ def run_plan_check(
         "started_at": started, "finished_at": finished, "outcome": outcome, "exit_code": exit_code,
         "timeout_seconds": timeout_seconds, "max_output_bytes": MAX_OUTPUT_BYTES,
         "snapshot_before": before, "snapshot_after": after, "observation_error": observation_error,
+        "recovery": {"version": RECOVERY_VERSION, "check_id": check_id, "case_id": events[0]["case_id"],
+                     "run_id": plan["attrs"]["run_id"], "ledger": ledger,
+                     "proposal_sha256": plan["attrs"]["proposal_sha256"], "ledger_sha256": digest,
+                     "ledger_bytes": len(anchor), "ledger_sequence": len(events)},
         "log": {"path": log_path.relative_to(root).as_posix(), "sha256": hashlib.sha256(output).hexdigest(),
                 "captured_bytes": len(output), "emitted_bytes": total_bytes, "truncated": total_bytes > len(output)},
     }
     receipt_path = capture_dir / "receipt.json"
-    atomic_write_text(receipt_path, canonical_json(receipt) + "\n")
+    receipt_content = canonical_json(receipt) + "\n"
+    receipt_hash = hashlib.sha256(receipt_content.encode("utf-8")).hexdigest()
+    atomic_write_text(receipt_path, receipt_content)
     receipt_ref = receipt_path.relative_to(root).as_posix()
-    receipt_hash = hashlib.sha256(receipt_path.read_bytes()).hexdigest()
-    check_id = f"check:{uuid.uuid4().hex}"
+    records = _check_records(plan, check_id, receipt_ref, receipt_hash, receipt)
+    # A concurrent ledger edit invalidates the append, not the already executed
+    # command. Keep its receipt and original digest instead of replaying it.
+    try:
+        _append(path, events, digest, records, plan["attrs"]["run_id"], [f"file:{receipt_ref}#{receipt_hash}"])
+    except (ACGError, OSError) as exc:
+        raise ACGError(f"command finished; receipt preserved at {receipt_ref}; receipt_sha256={receipt_hash}; ledger append refused: {exc}") from exc
+    return {"protocol_version": SESSION_VERSION, "outcome": outcome, "exit_code": exit_code,
+            "receipt_node_id": f"{check_id}:receipt", "receipt_path": receipt_ref, "receipt_sha256": receipt_hash,
+            "repository_changed_during_check": before != after, "acceptance_assessed": False}
+
+
+def _check_records(plan: dict[str, Any], check_id: str, receipt_ref: str, receipt_hash: str,
+                   receipt: dict[str, Any], *, recovered: bool = False) -> list[dict[str, Any]]:
+    """Keep original checks and explicit recovery on the same evidence topology."""
+    plan_id, task_id, criterion = receipt["plan_id"], receipt["task_id"], receipt["criterion_index"]
+    outcome = receipt["outcome"]
     receipt_id, artifact_id = f"{check_id}:receipt", f"{check_id}:output"
     task_node = f"{plan_id}:task:{task_id}"
-    records = [
+    return [
         _node(check_id, "ToolCall", f"Explicit check for {task_id}, criterion {criterion}",
               runtime_managed=False, status="completed" if outcome == "passed" else "failed",
-              command=command, execution_origin="explicit_cli_check", project_plan_id=plan_id),
+              command=receipt["command"], execution_origin="explicit_cli_check", project_plan_id=plan_id,
+              recording_origin="receipt_recovery" if recovered else "check_execution"),
         _node(receipt_id, "VerificationReceipt", f"Command result: {outcome}", status=outcome, capture_mode="live",
               project_check_version=CHECK_VERSION, plan_id=plan_id, task_id=task_id, criterion_index=criterion,
               source_path=receipt_ref, sha256=receipt_hash),
@@ -300,15 +330,6 @@ def run_plan_check(
         _edge("produces", check_id, receipt_id), _edge("produces", check_id, artifact_id),
         _edge("verified_by", task_node, receipt_id), _edge("checks", receipt_id, f"{task_node}:criterion:{criterion}"),
     ]
-    # A concurrent ledger edit invalidates the append, not the already executed
-    # command. Keep its receipt for inspection rather than replaying the command.
-    try:
-        _append(path, events, digest, records, plan["attrs"]["run_id"], [f"file:{receipt_ref}#{receipt_hash}"])
-    except (ACGError, OSError) as exc:
-        raise ACGError(f"command finished; receipt preserved at {receipt_ref}; ledger append refused: {exc}") from exc
-    return {"protocol_version": SESSION_VERSION, "outcome": outcome, "exit_code": exit_code,
-            "receipt_node_id": receipt_id, "receipt_path": receipt_ref, "receipt_sha256": receipt_hash,
-            "repository_changed_during_check": before != after, "acceptance_assessed": False}
 
 
 def _receipt_status(root: Path, node: dict[str, Any], snapshot: str) -> dict[str, Any]:

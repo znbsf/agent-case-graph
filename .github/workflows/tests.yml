@@ -30,7 +30,7 @@ jobs:
       - name: Install optional MCP adapter
         run: python -m pip install -e ".[mcp]"
       - name: Project planning and real MCP stdio
-        run: python -m unittest tests.test_project_planning tests.test_project_query tests.test_project_session tests.test_project_input_boundaries tests.test_project_main_compatibility tests.test_mcp_server -v
+        run: python -m unittest tests.test_project_planning tests.test_project_query tests.test_project_session tests.test_check_recovery tests.test_project_input_boundaries tests.test_project_main_compatibility tests.test_mcp_server -v
       - name: Validate public example
         shell: bash
         run: |
