@@ -19,3 +19,15 @@ Keep changes focused and add a regression test for protocol, runtime, projector,
 or renderer behavior. Do not commit caches, generated example projections,
 credentials, internal issue identifiers, absolute local paths, or private
 Ledgers.
+
+## Project-planning adapter
+
+Core installation remains dependency-free. Install `.[mcp]` when testing the
+six read-only MCP tools. Project tests use synthetic repositories and isolated
+command fixtures; real stdio tests require ordinary child-process access.
+
+Run `python -m unittest discover -s tests -v` and, with the optional SDK, the
+project planning, query, session, boundary and MCP tests. CI covers Ubuntu and
+Windows on Python 3.11–3.13, public example validation and wheel construction.
+Keep live trial inputs, receipts, local machine paths and generated artifacts
+outside commits. Purely derived runtime advice cannot grant authorization.

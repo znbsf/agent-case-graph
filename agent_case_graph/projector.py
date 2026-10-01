@@ -4,6 +4,7 @@ from collections import Counter
 from pathlib import Path
 from typing import Any
 
+from .graph_runtime import build_graph_runtime_advice
 from .ledger import sha256_file
 from .model import ACGError, SCHEMA_VERSION
 from .replay import build_replay_catalog
@@ -11,10 +12,26 @@ from .runtime import build_runtime_catalog
 from .spatial import build_spatial_catalog
 
 
+def _event_provenance(event: dict[str, Any]) -> dict[str, list[str]]:
+    run_id = event.get("run_id")
+    return {
+        "capture_modes": [event["provenance"]["capture_mode"]],
+        "source_refs": sorted(set(event["provenance"].get("source_refs", []))),
+        "run_ids": [run_id] if isinstance(run_id, str) and run_id else [],
+    }
+
+
+def _merge_provenance(target: dict[str, list[str]], event: dict[str, Any]) -> None:
+    incoming = _event_provenance(event)
+    for key in ("capture_modes", "source_refs", "run_ids"):
+        target[key] = sorted(set(target.get(key, [])) | set(incoming[key]))
+
+
 def project_events(
     events: list[dict[str, Any]],
     *,
     ledger_path: str | Path | None = None,
+    ledger_sha256: str | None = None,
 ) -> dict[str, Any]:
     declaration = events[0]["graph"]
     nodes: dict[str, dict[str, Any]] = {}
@@ -38,6 +55,7 @@ def project_events(
                     "event_ids": [event["event_id"]],
                     "first_sequence": event["sequence"],
                     "last_sequence": event["sequence"],
+                    "provenance": _event_provenance(event),
                 }
             else:
                 if existing["type"] != incoming["type"]:
@@ -48,6 +66,7 @@ def project_events(
                 existing["attrs"].update(incoming.get("attrs", {}))
                 existing["event_ids"].append(event["event_id"])
                 existing["last_sequence"] = event["sequence"]
+                _merge_provenance(existing["provenance"], event)
         elif kind == "edge.recorded":
             incoming = event["edge"]
             edge_id = incoming["id"]
@@ -62,6 +81,7 @@ def project_events(
                     "event_ids": [event["event_id"]],
                     "first_sequence": event["sequence"],
                     "last_sequence": event["sequence"],
+                    "provenance": _event_provenance(event),
                 }
             else:
                 identity = (existing["type"], existing["from"], existing["to"])
@@ -71,6 +91,7 @@ def project_events(
                 existing["attrs"].update(incoming.get("attrs", {}))
                 existing["event_ids"].append(event["event_id"])
                 existing["last_sequence"] = event["sequence"]
+                _merge_provenance(existing["provenance"], event)
         elif kind == "state.changed":
             transition = dict(event["transition"])
             transition.update(
@@ -94,7 +115,7 @@ def project_events(
     source_ledger: dict[str, Any] | None = None
     if ledger_path is not None:
         source = Path(ledger_path)
-        source_ledger = {"name": source.name, "sha256": sha256_file(source)}
+        source_ledger = {"name": source.name, "sha256": ledger_sha256 or sha256_file(source)}
 
     node_list = sorted(nodes.values(), key=lambda item: (item["first_sequence"], item["id"]))
     edge_list = sorted(edges.values(), key=lambda item: (item["first_sequence"], item["id"]))
@@ -116,6 +137,7 @@ def project_events(
         },
     }
     graph["runtime"] = build_runtime_catalog(graph)
+    graph["runtime_advice"] = build_graph_runtime_advice(graph)
     graph["spatial"] = build_spatial_catalog(graph)
     graph["replay"] = build_replay_catalog(graph, events)
     return graph

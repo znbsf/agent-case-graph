@@ -10,11 +10,15 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from .importer import import_issue_events
-from .ledger import append_event, canonical_json, write_new_ledger
+from .ledger import append_event, atomic_write_text, canonical_json, write_new_ledger
 from .lint import lint_graph
 from .localization import load_display_locales
 from .model import ACGError, SCHEMA_VERSION, load_events
 from .projector import project_events
+from .planning import check_plan, prepare_plan
+from .project_profile import inspect_project
+from .project_query import query_project
+from .project_session import record_project_plan, review_project_plan, run_plan_check
 from .renderer import write_projection
 from .runtime import (
     build_runtime_snapshot,
@@ -26,7 +30,7 @@ from .runtime import (
 def _json_object(value: str) -> dict[str, Any]:
     try:
         parsed = json.loads(value)
-    except json.JSONDecodeError as exc:
+    except (json.JSONDecodeError, RecursionError) as exc:
         raise argparse.ArgumentTypeError(f"invalid JSON: {exc}") from exc
     if not isinstance(parsed, dict):
         raise argparse.ArgumentTypeError("value must be a JSON object")
@@ -58,7 +62,6 @@ def _initial_case_events(
     actor_id: str,
     source_refs: list[str],
 ) -> list[dict[str, Any]]:
-    base_time = datetime.now().astimezone().replace(microsecond=0)
     definitions = [
         (
             "graph.declared",
@@ -110,6 +113,13 @@ def _initial_case_events(
             run_id,
         ),
     ]
+    # End the bootstrap sequence at the current wall-clock time.  Starting at
+    # "now" would put the later bootstrap events in the future, so an event
+    # appended immediately after init-case could have an earlier timestamp.
+    base_time = (
+        datetime.now().astimezone().replace(microsecond=0)
+        - timedelta(seconds=len(definitions) - 1)
+    )
     events: list[dict[str, Any]] = []
     for index, (kind, payload, event_run_id) in enumerate(definitions, start=1):
         events.append(
@@ -408,6 +418,72 @@ def _cmd_record_state(args: argparse.Namespace) -> int:
     )
 
 
+def _project_result(value: dict[str, Any], output: Path | None) -> None:
+    content = json.dumps(value, ensure_ascii=False, indent=2)
+    if output:
+        atomic_write_text(output, content + "\n")
+    else:
+        print(content)
+
+
+def _cmd_inspect_project(args: argparse.Namespace) -> int:
+    _project_result(inspect_project(args.workspace), args.output)
+    return 0
+
+
+def _cmd_query_project(args: argparse.Namespace) -> int:
+    _project_result(query_project(args.workspace, path=args.path, module=args.module,
+                                 include_neighbors=not args.no_neighbors, page_size=args.page_size,
+                                 cursor=args.cursor), args.output)
+    return 0
+
+
+def _cmd_plan_project(args: argparse.Namespace) -> int:
+    _project_result(prepare_plan(args.workspace, args.goal, ledger=args.ledger, run_id=args.run_id), args.output)
+    return 0
+
+
+def _cmd_check_plan(args: argparse.Namespace) -> int:
+    try:
+        plan = json.loads(args.plan.read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError) as exc:
+        raise ACGError("plan must be a readable UTF-8 JSON file") from exc
+    result = check_plan(args.workspace, plan)
+    _project_result(result, args.output)
+    return 0 if result["valid"] else 1
+
+
+def _cmd_mcp(args: argparse.Namespace) -> int:
+    from .mcp_server import serve
+
+    serve(args.workspace_root)
+    return 0
+
+
+def _cmd_record_project_plan(args: argparse.Namespace) -> int:
+    try:
+        plan = json.loads(args.plan.read_text(encoding="utf-8"))
+    except (OSError, ValueError, RecursionError) as exc:
+        raise ACGError("plan must be a readable UTF-8 JSON file") from exc
+    _project_result(record_project_plan(args.workspace, plan, args.ledger, plan_id=args.plan_id,
+                                       run_id=args.run_id, supersedes=args.supersedes, evidence_refs=args.evidence_node), None)
+    return 0
+
+
+def _cmd_review_project_plan(args: argparse.Namespace) -> int:
+    _project_result(review_project_plan(args.workspace, args.ledger, plan_id=args.plan_id), args.output)
+    return 0
+
+
+def _cmd_run_plan_check(args: argparse.Namespace) -> int:
+    command = args.command[1:] if args.command and args.command[0] == "--" else args.command
+    result = run_plan_check(args.workspace, args.ledger, plan_id=args.plan_id, task_id=args.task_id,
+                            criterion=args.criterion, command=command, timeout_seconds=args.timeout_seconds,
+                            evidence_dir=args.evidence_dir)
+    _project_result(result, None)
+    return 0 if result["outcome"] == "passed" else 1
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="acg",
@@ -418,6 +494,68 @@ def build_parser() -> argparse.ArgumentParser:
     doctor = subparsers.add_parser("doctor", help="check the local runtime and optional ledger")
     doctor.add_argument("--ledger", type=Path)
     doctor.set_defaults(func=_cmd_doctor)
+
+    inspect = subparsers.add_parser("inspect-project", help="read repository structure, source hashes and static Python imports")
+    inspect.add_argument("workspace", type=Path)
+    inspect.add_argument("--output", type=Path)
+    inspect.set_defaults(func=_cmd_inspect_project)
+
+    query = subparsers.add_parser("query-project", help="query a path subtree or Python module with snapshot-bound pagination")
+    query.add_argument("workspace", type=Path)
+    selector = query.add_mutually_exclusive_group()
+    selector.add_argument("--path", help="exact POSIX file path or directory subtree")
+    selector.add_argument("--module", help="exact dotted Python module name")
+    query.add_argument("--no-neighbors", action="store_true", help="omit one-hop static Python import neighbors")
+    query.add_argument("--page-size", type=int, default=20)
+    query.add_argument("--cursor")
+    query.add_argument("--output", type=Path)
+    query.set_defaults(func=_cmd_query_project)
+
+    plan = subparsers.add_parser("plan-project", help="prepare source-bound context for an agent-authored project plan")
+    plan.add_argument("workspace", type=Path)
+    plan.add_argument("--goal", required=True)
+    plan.add_argument("--ledger", help="optional POSIX path relative to this repository")
+    plan.add_argument("--run-id")
+    plan.add_argument("--output", type=Path)
+    plan.set_defaults(func=_cmd_plan_project)
+
+    check = subparsers.add_parser("check-plan", help="check plan sources, snapshot freshness and dependency order")
+    check.add_argument("workspace", type=Path)
+    check.add_argument("plan", type=Path)
+    check.add_argument("--output", type=Path)
+    check.set_defaults(func=_cmd_check_plan)
+
+    record_plan = subparsers.add_parser("record-project-plan", help="atomically record a fresh proposal; optional explicit revision lineage")
+    record_plan.add_argument("workspace", type=Path)
+    record_plan.add_argument("plan", type=Path)
+    record_plan.add_argument("--ledger", required=True, help="workspace-relative POSIX ledger path")
+    record_plan.add_argument("--plan-id", required=True)
+    record_plan.add_argument("--run-id", required=True)
+    record_plan.add_argument("--supersedes", help="active previous project Plan ID in the same Run")
+    record_plan.add_argument("--evidence-node", action="append", default=[], help="intact check receipt ID from the superseded plan; repeat for multiple results")
+    record_plan.set_defaults(func=_cmd_record_project_plan)
+
+    review_plan = subparsers.add_parser("review-project-plan", help="derive feedback from current evidence and explicit plan lineage")
+    review_plan.add_argument("workspace", type=Path)
+    review_plan.add_argument("--ledger", required=True)
+    review_plan.add_argument("--plan-id", required=True)
+    review_plan.add_argument("--output", type=Path)
+    review_plan.set_defaults(func=_cmd_review_project_plan)
+
+    run_check = subparsers.add_parser("run-plan-check", help="execute an explicitly supplied command and capture a plan-linked receipt")
+    run_check.add_argument("workspace", type=Path)
+    run_check.add_argument("--ledger", required=True)
+    run_check.add_argument("--plan-id", required=True)
+    run_check.add_argument("--task-id", required=True)
+    run_check.add_argument("--criterion", type=int, required=True, help="1-based acceptance criterion index")
+    run_check.add_argument("--timeout-seconds", type=int, default=60)
+    run_check.add_argument("--evidence-dir", default=".artifacts/project-checks")
+    run_check.add_argument("--command", nargs=argparse.REMAINDER, required=True, help="explicit argv; put this option last; no shell is used")
+    run_check.set_defaults(func=_cmd_run_plan_check)
+
+    mcp = subparsers.add_parser("mcp", help="serve read-only project tools over MCP stdio (requires the mcp extra)")
+    mcp.add_argument("--workspace-root", type=Path, help="explicit repository root; otherwise ACG_WORKSPACE_ROOT is required")
+    mcp.set_defaults(func=_cmd_mcp)
 
     init_case = subparsers.add_parser("init-case", help="create a new live/synthetic Case ledger")
     init_case.add_argument("--ledger", required=True, type=Path)
