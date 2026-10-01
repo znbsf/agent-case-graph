@@ -10,10 +10,10 @@ from pathlib import Path
 from typing import Any, Sequence
 
 from .importer import import_issue_events
-from .ledger import append_event, atomic_write_text, canonical_json, write_new_ledger
+from .ledger import append_event, atomic_write_text, canonical_json, read_ledger_snapshot, write_new_ledger
 from .lint import lint_graph
 from .localization import load_display_locales
-from .model import ACGError, SCHEMA_VERSION, load_events
+from .model import ACGError, CAPTURE_MODES, SCHEMA_VERSION, load_events
 from .projector import project_events
 from .planning import check_plan, prepare_plan
 from .project_profile import inspect_project
@@ -209,8 +209,8 @@ def _cmd_validate_ledger(args: argparse.Namespace) -> int:
 
 
 def _load_project_lint(ledger: Path) -> tuple[list[dict[str, Any]], dict[str, Any], list[dict[str, Any]]]:
-    events = load_events(ledger)
-    graph = project_events(events, ledger_path=ledger)
+    events, digest = read_ledger_snapshot(ledger)
+    graph = project_events(events, ledger_path=ledger, ledger_sha256=digest)
     findings = lint_graph(graph)
     return events, graph, findings
 
@@ -274,6 +274,9 @@ def _cmd_step_status(args: argparse.Namespace) -> int:
         to_status=args.status,
         run_id=args.run_id,
     )
+    capture_mode = before.get("capture_mode")
+    if not isinstance(capture_mode, str) or capture_mode not in CAPTURE_MODES:
+        raise ACGError("checkpoint requires a Run with an explicit capture_mode")
     from_status = str(node.get("attrs", {}).get("status", "pending"))
     attempt = int(node.get("attrs", {}).get("attempt", 0) or 0)
     if args.status == "running":
@@ -285,7 +288,7 @@ def _cmd_step_status(args: argparse.Namespace) -> int:
         kind="node.recorded",
         actor_type=args.actor_type,
         actor_id=args.actor_id,
-        capture_mode="live",
+        capture_mode=capture_mode,
         source_refs=args.source_ref,
         payload={
             "node": {
@@ -303,9 +306,10 @@ def _cmd_step_status(args: argparse.Namespace) -> int:
         },
         run_id=before["run_id"],
         occurred_at=args.occurred_at,
+        expected_sequence=len(events),
+        expected_sha256=graph["source_ledger"]["sha256"],
     )
-    updated_events = load_events(args.ledger)
-    updated_graph = project_events(updated_events, ledger_path=args.ledger)
+    updated_graph = project_events(events + [event])
     after = build_runtime_snapshot(updated_graph, run_id=before["run_id"])
     print(
         json.dumps(
