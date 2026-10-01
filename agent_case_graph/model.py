@@ -241,7 +241,7 @@ def parse_events(text: str) -> list[dict[str, Any]]:
                 continue
             try:
                 event = json.loads(raw_line)
-            except json.JSONDecodeError as exc:
+            except (json.JSONDecodeError, RecursionError) as exc:
                 raise ACGError(f"line {line_number}: invalid JSON: {exc}") from exc
             if not isinstance(event, dict):
                 raise ACGError(f"line {line_number}: event must be an object")
