@@ -5,6 +5,7 @@ from collections import defaultdict
 from typing import Any
 
 from .model import ALLOWED_TRANSITIONS
+from .runtime import EXECUTABLE_NODE_TYPES
 
 
 SHA256_PATTERN = re.compile(r"^[0-9a-f]{64}$")
@@ -55,6 +56,8 @@ def lint_graph(graph: dict[str, Any]) -> list[dict[str, Any]]:
             )
         outgoing[edge["from"]].append(edge)
         incoming[edge["to"]].append(edge)
+        if edge["type"] == "approved_by" and nodes.get(edge["to"], {}).get("type") != "Approval":
+            add("ACG023", "error", "approved_by must reference an Approval node", edge_id=edge["id"])
 
     for node in nodes.values():
         node_id = node["id"]
@@ -94,10 +97,10 @@ def lint_graph(graph: dict[str, Any]) -> list[dict[str, Any]]:
                 add("ACG009", "error", "Artifact has no valid SHA256", node_id=node_id)
             if attrs.get("capture_mode") not in {"live", "reconstructed", "synthetic"}:
                 add("ACG010", "error", "Artifact has no capture mode", node_id=node_id)
-        elif node_type == "Action" and attrs.get("mutating") is True:
+        elif node_type in EXECUTABLE_NODE_TYPES and attrs.get("mutating") is True:
             approvals = [edge for edge in outgoing[node_id] if edge["type"] == "approved_by"]
             if not approvals:
-                add("ACG011", "error", "mutating Action has no Approval", node_id=node_id)
+                add("ACG011", "error", "mutating executable node has no Approval", node_id=node_id)
         elif node_type == "SkillVersion":
             has_pattern = any(edge["type"] == "implemented_by" for edge in incoming[node_id])
             has_eval = any(edge["type"] == "tested_by" for edge in outgoing[node_id])

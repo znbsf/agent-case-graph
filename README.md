@@ -193,3 +193,17 @@ python -m pip wheel --no-deps --wheel-dir .artifacts/wheel .
 ## License
 
 [MIT](LICENSE)
+
+## Source-bound project planning
+
+The optional [project-planning plugin](docs/project-planning-plugin.md) provides
+bounded repository inspection, exact path or Python-module queries, static
+one-hop Python import neighbors, and snapshot-bound pagination. CJS and MJS
+checker/build sources participate in source hashes and evidence freshness.
+
+`acg plan-project`, `check-plan`, `record-project-plan`, `run-plan-check` and
+`review-project-plan` support proposal → explicit command evidence → revision.
+Plans remain proposals: passed checks do not authorize execution or assert
+semantic acceptance. Stale sources, disconnected checks and superseded plans
+are rejected. Install `.[mcp]` to serve six read-only MCP tools; mutations and
+commands remain explicit CLI operations. See the guide for limits and examples.

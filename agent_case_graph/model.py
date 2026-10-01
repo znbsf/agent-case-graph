@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import io
 import json
 from datetime import datetime
 from pathlib import Path
@@ -23,6 +24,8 @@ NODE_TYPES = {
     "ProblemType",
     "Case",
     "Goal",
+    "Plan",
+    "ToolCall",
     "AcceptanceCriterion",
     "Run",
     "Step",
@@ -82,6 +85,7 @@ EDGE_TYPES = {
     "supersedes",
     "deprecated_by",
     "references",
+    "informs",
 }
 
 CASE_STATES = {
@@ -212,12 +216,22 @@ def load_events(path: str | Path) -> list[dict[str, Any]]:
     ledger_path = Path(path)
     if not ledger_path.is_file():
         raise ACGError(f"ledger does not exist: {ledger_path}")
+    try:
+        return parse_events(ledger_path.read_text(encoding="utf-8-sig"))
+    except ACGError as exc:
+        if str(exc) == "ledger is empty":
+            raise ACGError(f"ledger is empty: {ledger_path}") from exc
+        raise
+
+
+def parse_events(text: str) -> list[dict[str, Any]]:
+    """Validate an immutable ledger snapshot without reopening its source."""
 
     events: list[dict[str, Any]] = []
     event_ids: set[str] = set()
     case_ids: set[str] = set()
 
-    with ledger_path.open("r", encoding="utf-8-sig") as stream:
+    with io.StringIO(text) as stream:
         for line_number, raw_line in enumerate(stream, start=1):
             if not raw_line.strip():
                 continue
@@ -240,7 +254,7 @@ def load_events(path: str | Path) -> list[dict[str, Any]]:
             events.append(event)
 
     if not events:
-        raise ACGError(f"ledger is empty: {ledger_path}")
+        raise ACGError("ledger is empty")
     if events[0]["kind"] != "graph.declared":
         raise ACGError("first event must be graph.declared")
     if sum(event["kind"] == "graph.declared" for event in events) != 1:

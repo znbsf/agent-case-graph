@@ -1,0 +1,17 @@
+{
+  "name": "agent-case-graph-dev",
+  "interface": {
+    "displayName": "Agent Case Graph Development"
+  },
+  "plugins": [
+    {
+      "name": "acg-project-planner",
+      "source": "./plugins/acg-project-planner",
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_USE"
+      },
+      "category": "Productivity"
+    }
+  ]
+}

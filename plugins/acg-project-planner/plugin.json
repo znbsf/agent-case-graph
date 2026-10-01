@@ -1,0 +1,9 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "acg-project-planner",
+  "version": "0.1.0",
+  "description": "Understand a local repository and check source-bound project plans with Agent Case Graph.",
+  "repository": "https://github.com/znbsf/agent-case-graph",
+  "license": "MIT",
+  "keywords": ["project-planning", "repository-context", "evidence", "mcp"]
+}
