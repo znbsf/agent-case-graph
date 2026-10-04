@@ -28,6 +28,15 @@ invalid inputs. `--output` writes an explicit JSON artifact; without it, results
 go to stdout. Keep generated context and proposals outside tracked public files
 when they describe a private project.
 
+Both `check-plan` and `record-project-plan` accept UTF-8 JSON with or without a
+leading UTF-8 BOM, including UTF-8 output from Windows PowerShell. CLI plan
+files are limited to **4,000,000 bytes**, counting the BOM and all whitespace.
+Oversized files exit 2 before repository validation or ledger writes. Invalid
+encoding, malformed JSON and excessive nesting also exit 2. Valid JSON still
+passes through the existing snapshot, source, path and dependency checks. This
+file-input limit does not change the plan schema or MCP dictionary inputs; an
+operator-selected plan file can still be outside the inspected repository.
+
 ## Connect the local MCP server
 
 Install the optional SDK in an isolated environment:
