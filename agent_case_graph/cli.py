@@ -27,6 +27,8 @@ from .runtime import (
     validate_step_transition,
 )
 
+MAX_PLAN_FILE_BYTES = 4_000_000
+
 
 def _json_object(value: str) -> dict[str, Any]:
     try:
@@ -448,11 +450,23 @@ def _cmd_plan_project(args: argparse.Namespace) -> int:
     return 0
 
 
-def _cmd_check_plan(args: argparse.Namespace) -> int:
+def _read_project_plan(path: Path) -> Any:
+    """Read bounded UTF-8 JSON, including Windows editor BOM output."""
     try:
-        plan = json.loads(args.plan.read_text(encoding="utf-8"))
-    except (OSError, ValueError, RecursionError) as exc:
+        with path.open("rb") as stream:
+            data = stream.read(MAX_PLAN_FILE_BYTES + 1)
+    except (OSError, ValueError) as exc:
         raise ACGError("plan must be a readable UTF-8 JSON file") from exc
+    if len(data) > MAX_PLAN_FILE_BYTES:
+        raise ACGError(f"plan file exceeds the {MAX_PLAN_FILE_BYTES} byte input limit")
+    try:
+        return json.loads(data.decode("utf-8-sig"))
+    except (ValueError, RecursionError) as exc:
+        raise ACGError("plan must be a readable UTF-8 JSON file") from exc
+
+
+def _cmd_check_plan(args: argparse.Namespace) -> int:
+    plan = _read_project_plan(args.plan)
     result = check_plan(args.workspace, plan)
     _project_result(result, args.output)
     return 0 if result["valid"] else 1
@@ -466,10 +480,7 @@ def _cmd_mcp(args: argparse.Namespace) -> int:
 
 
 def _cmd_record_project_plan(args: argparse.Namespace) -> int:
-    try:
-        plan = json.loads(args.plan.read_text(encoding="utf-8"))
-    except (OSError, ValueError, RecursionError) as exc:
-        raise ACGError("plan must be a readable UTF-8 JSON file") from exc
+    plan = _read_project_plan(args.plan)
     _project_result(record_project_plan(args.workspace, plan, args.ledger, plan_id=args.plan_id,
                                        run_id=args.run_id, supersedes=args.supersedes, evidence_refs=args.evidence_node), None)
     return 0
@@ -532,13 +543,13 @@ def build_parser() -> argparse.ArgumentParser:
 
     check = subparsers.add_parser("check-plan", help="check plan sources, snapshot freshness and dependency order")
     check.add_argument("workspace", type=Path)
-    check.add_argument("plan", type=Path)
+    check.add_argument("plan", type=Path, help="UTF-8 JSON plan file (optional BOM; maximum 4,000,000 bytes)")
     check.add_argument("--output", type=Path)
     check.set_defaults(func=_cmd_check_plan)
 
     record_plan = subparsers.add_parser("record-project-plan", help="atomically record a fresh proposal; optional explicit revision lineage")
     record_plan.add_argument("workspace", type=Path)
-    record_plan.add_argument("plan", type=Path)
+    record_plan.add_argument("plan", type=Path, help="UTF-8 JSON plan file (optional BOM; maximum 4,000,000 bytes)")
     record_plan.add_argument("--ledger", required=True, help="workspace-relative POSIX ledger path")
     record_plan.add_argument("--plan-id", required=True)
     record_plan.add_argument("--run-id", required=True)
