@@ -31,6 +31,11 @@ jobs:
         run: python -m pip install -e ".[mcp]"
       - name: Project planning and real MCP stdio
         run: python -m unittest tests.test_project_planning tests.test_project_query tests.test_project_session tests.test_check_recovery tests.test_project_input_boundaries tests.test_project_main_compatibility tests.test_mcp_server -v
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - name: Pure geometry tests
+        run: node --test tests/workbench-layout.test.cjs
       - name: Validate public example
         shell: bash
         run: |
@@ -38,6 +43,26 @@ jobs:
           acg validate-ledger examples/quickstart/events.jsonl
           acg lint --strict examples/quickstart/events.jsonl
           acg project examples/quickstart/events.jsonl --out-dir .artifacts/quickstart --title "Agent Case Graph Quickstart" --default-locale zh-CN
+          node scripts/check_workbench_geometry.cjs .artifacts/quickstart/workbench-model.json
 
       - name: Build wheel
         run: python -m pip wheel --no-deps --wheel-dir .artifacts/wheel .
+
+  browser:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install browser test tools
+        run: |
+          python -m pip install -e ".[browser-test]"
+          python -m playwright install --with-deps chromium
+      - name: Check offline workbench interactions
+        run: python -m scripts.check_browser --out-dir .artifacts/browser
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: synthetic-browser-check
+          path: .artifacts/browser

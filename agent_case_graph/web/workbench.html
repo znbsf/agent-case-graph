@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'; img-src data:; base-uri 'none'; form-action 'none'">
+<title>__TITLE__</title><style>__STYLE__</style></head>
+<body>
+<a class="skip" href="#canvasShell">跳到关系图 / Skip to graph</a>
+<header class="topbar"><div><p class="eyebrow">EVIDENCE / WORKBENCH</p><h1 id="pageTitle">__TITLE__</h1></div><nav><a href="graph.html" id="storyLink">主路径</a><a href="reader.html" id="readerLink">阅读页</a><button id="basisButton" type="button">结构依据</button><select id="languageSelect" aria-label="显示语言 / Language"><option value="zh-CN">中文</option><option value="en-US">English</option></select></nav></header>
+<p id="coverageNotice" class="coverage"></p>
+<div class="workbench">
+ <aside id="stagePanel" class="stage-panel"><div class="panel-caption" id="stageCaption"></div><nav id="stageNav" aria-label="阶段 / Stages"></nav></aside>
+ <main class="center">
+  <div class="view-tabs" role="tablist" aria-label="视图 / Views"><button data-view="overview" class="view-tab" role="tab" aria-selected="true"></button><button data-view="workflow" class="view-tab" role="tab" aria-selected="false"></button><button data-view="evidence" class="view-tab" role="tab" aria-selected="false"></button><button data-view="sequence" class="view-tab" role="tab" aria-selected="false"></button><button data-view="trace" class="view-tab" role="tab" aria-selected="false"></button></div>
+  <div class="toolbar"><button id="toggleStages" type="button" aria-expanded="true"></button><label><span class="sr-only" id="scopeLabel"></span><select id="scopeSelect" aria-labelledby="scopeLabel"></select></label><button id="focusButton" type="button"></button><button id="clearFocus" type="button" hidden></button><input id="searchInput" type="search" aria-label="搜索节点 / Search nodes"><details class="filters"><summary id="filterTitle"></summary><label><input id="showStructure" type="checkbox"><span id="structureLabel"></span></label><label><input id="showOrder" type="checkbox" checked><span id="orderLabel"></span></label><label id="overviewEvidence"><input id="showEvidence" type="checkbox"><span id="evidenceLabel"></span></label></details></div>
+  <div id="searchResults" hidden></div>
+  <p id="scopeHint" class="scope-hint"></p>
+  <div class="zoom-tools"><button id="zoomOut" type="button" aria-label="缩小 / Zoom out">−</button><button id="zoomReset" type="button">100%</button><button id="zoomIn" type="button" aria-label="放大 / Zoom in">+</button><button id="fitButton" type="button"></button><button id="fitAllButton" type="button"></button><span id="canvasHint"></span></div>
+  <div id="canvasShell" tabindex="0" role="region" aria-label="可缩放关系图 / Zoomable graph"><div id="canvasSizer"><div id="graphWorld"><svg id="graphSvg" aria-label="显式类型关系 / Explicit typed relations"></svg><div id="graphNodes"></div></div></div></div>
+  <div id="tracePanel" hidden><div id="traceTools"><span id="traceCount"></span><button id="tracePrev" type="button">←</button><button id="traceNext" type="button">→</button></div><div id="timeline"></div></div>
+  <footer><span id="graphCounts"></span><span id="relationLegend"></span></footer>
+ </main>
+ <aside id="detailsPanel" class="details-panel" hidden><div class="details-heading"><strong id="detailsTitle"></strong><button id="closeDetails" type="button" aria-label="关闭详情 / Close details">×</button></div><div id="details"></div></aside>
+</div>
+<p id="announcer" class="sr-only" aria-live="polite"></p>
+<noscript>此离线工作台需要 JavaScript。原始数据在 graph.json，展示分组与引用在 workbench-model.json。</noscript>
+<script id="workbenchData" type="application/json">__DATA__</script><script>__LAYOUT__</script><script>__SCRIPT__</script>
+</body></html>

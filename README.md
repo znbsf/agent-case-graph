@@ -4,50 +4,75 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11%2B-3776AB.svg)](https://www.python.org/)
 
-**Evidence-first graph protocol and spatial workbench for auditable agent runs.**
+**Append-only agent traces with a graph-first key path, visible outcomes and source-bound local expansion.**
 
-Agent Case Graph（ACG）把 Agent 处理问题的过程保存为 append-only JSONL，再确定性投影为知识图、控制图和执行状态。它关注的不只是“画一张图”，而是让图回答：
+Agent Case Graph（ACG）把 Agent 的操作、证据、产物和结论先保存为 append-only JSONL，再投影为同一个 `paper-trace-0.1` 模型：
 
-- 我们知道什么，证据来自哪里？
-- 哪个动作现在允许执行，为什么？
-- 这次 Run 实际走到了哪里，下一步是什么？
-- 哪些结论经过验证，哪些仍是 reconstructed 或 uncertain？
+- `trace.puml`：可评审、可版本比较的 PlantUML 静态基准图；
+- `sequence.puml`：按显式时序关系线性化的 PlantUML 单次执行投影，保留源记录号；
+- `graph.html`：默认主路径图；主路径与旁支、节点内结果、点击后的局部动作 → 结果 → 结论；
+- `reader.html`：辅助阅读页，保留逐阶段的问题、动作、结果、边界与来源；
+- `story-model.json`：图形展示模型，可选来源绑定的主路径 / 旁支与结果短句；
+- `workbench.html`：证据工作台，阶段总览 / 阶段关系 / 证据链 / 单次执行 / 原始记录；
+- `workbench-model.json`：无损展示分区、聚合边的原始见证与研究依据；`workbench-legacy.html` 保留旧技术视图用于对照；
+- `review-model.json`：有源节点引用的阶段阅读索引，不回写账本、不产生新的验收结论；
+- `loop-model.json`：由 canonical graph 派生的双循环聚合索引；
+- `sequence-model.json`：单次执行生命线、步骤和 ExecutionIteration 作用域；
+- `trace-model.json`：技术图共享的展示模型，阅读索引在其聚合关系上继续派生；
+- `graph.json`：完整 canonical typed graph。
 
-> Status: `v0.1.0` alpha。运行时可以选路、解释阻塞并验证 Checkpoint，但不会自动执行任意 shell 命令。
+默认图先回答三个问题，原始记录和完整关系按需查看：
 
-## 核心结构
+1. 最初想解决什么，记录停在哪里？
+2. 每一步做了什么、得到什么结果，为什么调整方向？
+3. 结论的证据和边界是什么，哪些信息仍然缺失？
+
+## Compatibility with main
+
+The graph-first presentation preserves the existing `spatial-0.1`
+Knowledge / Control / Execution catalog in `graph.json`. Layer memberships
+reference canonical node IDs; they do not duplicate canonical facts. Execution
+membership still comes only from the explicit runtime catalog. Source-bound
+planning, check recovery, bounded BOM plan input and replay remain available.
+The separate State / Control / Action spatial-0.2 interface is not adopted by
+this integration.
+
+## 论文对应
+
+视觉语法主要来自：
+
+- [Graph of Trace, ACL 2026](https://aclanthology.org/2026.acl-demo.29/)：左侧逐步操作、中间自上而下 DAG、右侧节点详情；
+- [LEDGER, arXiv:2608.18398](https://arxiv.org/abs/2608.18398)：`Trace Records -> Evidence Nodes -> Workflow Nodes`，以及 `context / plan / inspect / execute / validate / claim` 六阶段；
+- [AgentDiagnose, EMNLP 2025](https://aclanthology.org/2025.emnlp-demos.15/)：不同诊断视图联动，但不把所有分析塞进核心 DAG。
+
+这里借鉴的是可读性和审计结构，不复制论文界面或数据，也不把论文结果当成本实现的验收。
+新版工作台还参考 Shneiderman 的按需详情原则与 Gansner 等人的有向图布局方法；
+逐项原文、实现选择、测试和限制见 [工作台结构依据](docs/workbench-research-basis.md)。LEDGER 是预印本。
+
+![PlantUML paper-trace quickstart](docs/assets/paper-trace-quickstart.svg)
+
+仓库保留一份可直接评审的 [Quickstart PlantUML 基准](examples/paper-trace/quickstart.puml)；CLI 生成结果仍以 Ledger 为准，可随时重建。
+
+## 数据流
 
 ```text
-Append-only Event Ledger
-          |
-          v
-Canonical typed graph
-  | Knowledge: Case / Evidence / Observation / Claim / Decision
-  | Control:   Goal / Run / Step / Approval / Dependency / Gate
-  | Execution: Ready / Running / Blocked / Completed / Checkpoint
-          |
-          +--> Workspace: Overview / Plan / Run / Review / Evidence
-          +--> Plan views: dependency flow / orthogonal planes / parallel layers
-          +--> Sequence inspector: Ledger / Plan / Candidate / Observed
+events.jsonl
+  append-only · live | reconstructed | synthetic
+        |
+        v
+Canonical Graph
+  stable IDs · typed nodes/edges · lint · runtime gates
+        |
+        v
+paper-trace-0.1 + loop-projection-0.1 + sequence-projection-0.1
+  Dialogue Round · Execution Iteration · Sequence · Workflow Phase · Evidence · Trace
+        |
+        +--> trace.puml
+        +--> sequence.puml
+        +--> graph.html
 ```
 
-同一个 canonical node 可以出现在多个投影中，但共享稳定 ID。页面坐标、卡片位置和记录顺序都不会被升级成新的因果事实。
-
-## 一个工作台，五种任务模式
-
-- **总览（Overview）**：用 Knowledge / Control / Execution 三层语义概括 Case，先回答“知道什么、计划什么、执行到哪里”。
-- **规划（Plan）**：检查显式依赖、当前候选顺序和阻塞关系；这是唯一承载空间图与顺序检查器的模式。
-- **运行（Run）**：按 `ready / running / blocked / completed / failed` 展示当前 frontier；空状态合并提示，不占据整列。
-- **复盘（Review）**：聚合记录边界、运行结论与证据缺口，并回到规划页检查顺序，不复制一套播放器。
-- **证据（Evidence）**：枚举 `supports / explains / implemented_by / checks` 形成的所有显式分支路径，检查论证和验收关系，不按节点类型补造链路。
-
-规划页包含三个互补的辅助视图：
-
-- **依赖图**：主画布只用显式 `precedes` 解释计划偏序；当前 Runtime 门禁与主要阻塞在同页检查器中显示。
-- **结构三面**：在 `x/y/z >= 0` 的第一卦限中展示 `XY = Knowledge / XZ = Control / YZ = Execution` 的层间接口。
-- **三层投影**：把 Knowledge / Control / Execution 拉开，便于沿显式关系阅读和定位。
-
-五种模式共享同一份 canonical graph、Run 选择和详情侧栏，不复制事实，也不让页面位置成为因果。HTML 由原生 SVG、HTML 和 JavaScript 组成，自包含、无 CDN，可以离线直接打开。
+页面位置、Ledger 时间和卡片顺序都不会自动成为因果。只有显式 edge 才进入关系图。
 
 ## 快速开始
 
@@ -57,7 +82,6 @@ cd agent-case-graph
 python -m venv .venv
 python -m pip install -e .
 
-acg doctor --ledger examples/quickstart/events.jsonl
 acg validate-ledger examples/quickstart/events.jsonl
 acg lint --strict examples/quickstart/events.jsonl
 acg project examples/quickstart/events.jsonl \
@@ -66,129 +90,156 @@ acg project examples/quickstart/events.jsonl \
   --default-locale zh-CN
 ```
 
-然后打开：
+打开 `examples/quickstart/generated/graph.html`，或使用 PlantUML 渲染 `trace.puml`：
 
-```text
-examples/quickstart/generated/graph.html
+```powershell
+.\scripts\render-plantuml.ps1 `
+  -InputPath .\examples\quickstart\generated\trace.puml `
+  -JarPath C:\path\to\plantuml.jar `
+  -Format svg
 ```
 
-公开示例全部标记为 `capture_mode=synthetic`。它故意保留一个 Running Action 和一个被前置关系阻塞的 Verification，以便展示 runtime overlay；不会触发任何外部操作。
+将输入改成 `examples/quickstart/generated/sequence.puml` 即可生成时序图。时序投影先按 `precedes / invokes / produces / checks / supersedes` 等显式关系构造偏序，同级节点再用源记录号稳定排序。线性化后的相邻步骤不一定互为因果；因果仍以 canonical typed edge 为准。
 
-## 创建自己的 Case
+PowerShell 用户可以直接运行仓库根目录的 `acg.ps1`。
+
+## 先看路径和结果，再展开证据
+
+打开 `graph.html`，直接看主路径和节点内的结果；点击节点在原位置下方展开动作、结果、结论和反证，不切走全图。
+虚线只表示复盘顺序 / 主题分组；局部箭头来自真实 typed edge。未知结果不会从标题的情绪或 PASS 字样猜测。
+`reader.html` 保留长文阅读；两种入口都使用同一阶段作用域，不借共享 Case/Run 引入全图。
+
+需要编辑主路径和旁支时，显式传入 `--presentation graph-presentation.json`。
+该可选 JSON 必须声明 `version: "case-story-0.1"`、匹配账本的 `source_sha256` 和 `cards`。
+每张卡片包含唯一 `id`、`title`、`stage_ids` / `node_ids`，旁支用 `parent_id` 指向主节点；所有阶段必须恰好出现一次。
+可选 `summary`、`boundary`、`results`（最多 3 条）仅改变展示；每条结果含 `text`、范围内的 `source_ids` 和 `tone`。
+`tone` 可选 `recorded / gain / open / negative / hypothesis / paused`，不是新的运行验收状态。
+哈希、引用、覆盖与父子关系均校验；没有 presentation 时按阶段展示源记录，不自动猜测旁支和成败。
+短句和引用仍需人工审核：结构校验能阻止失配，不能证明文字总结正确。
+
+历史重建、合成示例以及已记录的正文缺失数量在页首显示。页面不会通过解析描述中的 PASS 字样来推断成功；
+也不会把上一阶段用来影响计划的输出当成下一阶段自己产生的结果。阶段只是阅读分组，不等于原生执行迭代。
+
+右上角进入 `workbench.html`，保留以下五个技术视图；技术视图可返回主路径图：
+
+- **阶段总览**：先看阶段与源结论；每条聚合边均可追到原始边，不按位置补关系。
+- **阶段关系**：同阶段的目标、动作、结果、结论放在一起；展开后局部自上而下，关联上下文用虚框标出。
+- **证据链**：从 Claim 反查支持、反证、产物和检查；保留原状态，不新增验收。
+- **单次执行**：按阶段选择对应执行作用域，查看 User / Agent / Tool / Evidence / Evaluator 的时序。
+- **原始记录**：按 Ledger `sequence` 分页查看全部事件；顺序不是因果。
+
+左侧是可收起的阶段导航，中间优先留给关系图，右侧详情只在点击后出现。
+卡片完整换行；搜索、单跳聚焦、真实缩放和平移帮助定位。默认收起结构边，来源始终可查。
+旧 Loop Overview 和六阶段 Workflow 保留在 `workbench-legacy.html`，不是新版默认布局。
+
+Sequence 负责回答“单次执行先后发生了什么”；Workflow / Evidence 负责回答“为什么这样计划、什么证据改变了计划、哪些检查支撑结论”。两者来自同一 canonical graph，互为投影而不是互相替代。
+
+## 双循环与图化简
+
+```text
+DialogueRound (外层：用户输入/反馈 -> Goal 修订 -> AgentResponse)
+  └─ ExecutionIteration (内层：Plan -> ToolCall -> ToolOutput -> Evaluation)
+```
+
+`contains` 只声明作用域，不声明因果；同层先后仍必须使用显式 `precedes`。聚合点只存在于 projection，不会写回 Ledger。每个聚合点保存 `member_ids / internal_edge_ids / cycle_edge_ids`，跨组边保存原始 edge ID、端点和 provenance。未归组节点与边显式列在 `unmapped_node_ids / unmapped_edge_ids`，因此化简不会冒充事实删除。
+
+没有 `UserFeedback` 或父子 `contains` 证据时，Plan fallback 只叫 display/execution span，不声称它就是一次真实用户对话。`accepted` 缺失时，首轮是否成功始终为 unknown。
+
+## 底层能力保留
+
+- canonical node/edge 和稳定 ID；
+- append-only Ledger 与 SHA256 receipt；
+- `live / reconstructed / synthetic` 真实性边界；
+- deterministic lint；
+- runtime Ready frontier、Approval scope 和 Checkpoint；
+- visual-only replay，不重新执行工具或副作用。
+
+## Graph-native Runtime（最小闭环）
+
+`graph-runtime-0.1` 是 canonical graph 的只读控制面：它不会调用 Tool，也不会把推断写成原生 telemetry。
+
+- 只有 `Run` 作用域内显式标记 `runtime_managed=true` 的 `Action`、`ToolCall`、`Step`、`Verification` 才进入 Runtime。`ToolCall` 可以作为安全的下一步建议，但建议不等于已经调用。
+- 所有 `mutating=true` 的可执行节点共享门禁：显式 live Run、Case 处于 execute、scope 匹配的 granted Approval，以及 `targets -> Target` 或 `modifies -> Target/Artifact`。`approved_by` 指向其他节点类型、缺失采集模式或未批准的 ToolCall 都不能通过。
+- `acg advise` 汇总 Ready frontier、Claim 的缺失证据和可执行的 `Action`/`ToolCall`；候选到 Claim 的映射只沿已声明的 `produces -> supports/refutes` 关系，找不到作者声明的动作时会明确留空，而不会编造工具调用。
+- `Claim` / `RootCause` 的确认 gate 默认至少需要一条来自已完成、非 derived 证据节点的显式 `supports` 边；derived `supports` 关系也不能开启 gate。Claim、证据和支持关系必须唯一属于同一 `Run`（或三者均为 global），不会把其他 Run、global 或多 Run 证据自动借来确认。可在 Claim attrs 中加 `minimum_support_count`、`required_evidence_ids`、`required_evidence_types`、`required_capture_modes` 收紧条件；`refutes` 证据会阻止确认。`acg claim-status --status confirmed` 会执行此 gate，并在未传 `--run-id` 时只推断 Claim 的唯一 Run owner。
+- `acg record-recommendation` 把当时的建议快照 append 为 `Decision`，其中 `data_origin=derived`、`not_native_telemetry=true`、输入 Ledger SHA256、候选 ID 和 gate 摘要都会保留。之后的实际路径只从 Ledger 的后续 runtime node records 提取。
+- `acg review-paths` 使用 Ledger `sequence` 比较已记录的建议与实际 runtime records；比较本身也是 derived，绝不重放工具或补全缺失操作。
+- 历史复用需要显式相同的 `attrs.reuse_key`（或 `reuse_keys`），不会按 label 相似度猜测。只有 Case 已关闭/完成，且**同一历史 Run**有非 derived 的 `VerificationReceipt`，才标记为 verified success path；`reconstructed` 或 `synthetic` 历史始终只是 advisory template，不能充当当前 live Run 的执行证明。
+
+例如：
 
 ```bash
-acg init-case \
-  --ledger my-case/events.jsonl \
-  --case-id MY-CASE-001 \
-  --title "Investigate a reproducible problem" \
-  --capture-mode live
-
-acg record-node --ledger my-case/events.jsonl \
-  --case-id MY-CASE-001 \
-  --run-id run:MY-CASE-001:001 \
-  --node-id observation:MY-CASE-001:001 \
-  --node-type Observation \
-  --label "Observed fact" \
-  --attrs '{"status":"confirmed"}'
-
-acg project my-case/events.jsonl --out-dir my-case/generated
+acg advise current-events.jsonl --run-id run:CASE:001 \
+  --history-ledger known-good-case.jsonl
+acg record-recommendation --ledger current-events.jsonl --run-id run:CASE:001
+acg claim-status --ledger current-events.jsonl --claim-id claim:root-cause --status confirmed
+acg review-paths current-events.jsonl
 ```
 
-PowerShell 用户也可以直接运行仓库根目录的 `acg.ps1`。
+`project` 还会生成 `runtime-advice.json`。这是当前图状态的可再建派生物；它不替代 Ledger，也不证明动作实际发生过。
 
-## 图如何辅助执行
+`step-status`、`claim-status` 和 `record-recommendation` 在追加前，会在 Ledger 锁内检查输入快照的 sequence 与 SHA256。若验证后其他写入改变了 Ledger，命令拒绝提交，调用者需要重新读取并计算；不会自动重用旧授权或旧证据。`step-status` 的 Checkpoint 保留所属 Run 的采集模式，synthetic 演示不会被标记为 live。
 
-只有显式声明 `attrs.runtime_managed=true` 且被目标 Run `contains` 的 `Step / Action / Verification` 才进入 runtime。
+证据必须显式填写适合其类型的完成状态，例如 Observation 的 `confirmed`、ToolOutput 的 `completed`、Verification 的 `passed`。缺失、未知、blocked、skipped 状态均不能确认 Claim；历史成功路径也必须有明确完成的 VerificationReceipt。`minimum_support_count` 是正整数，按不同证据节点计数，重复 supports 边不增加证据数量。完整状态表见 [架构说明](docs/architecture.md#evidence-completion-states)。
 
-```text
-next-actions(run)
-  -> 检查 precedes / blocked_by / approved_by
-  -> 输出 ready / running / blocked / completed / failed
-  -> 为 Ready 节点生成最小上下文包
+上下文包提供 `task`、相关节点、目标路径、输入/输出引用、来源记录和哈希，不内嵌完整工具日志。邻接关系复用一次构建的索引。`selected_node_count` 包括任务本身；`node_reduction_ratio` 和兼容字段 `context_reduction_ratio` 都按节点数量计算，`measurement_basis=node_count`，不代表 token 节省或任务成功率提升。
 
-step-status(node, running|completed|failed|blocked|skipped)
-  -> 重新检查门禁
-  -> 追加持久化 Checkpoint 事件
-  -> 重新计算下一 Ready frontier
+## 从图反推流程
+
+ACG 可以显式记录 `Goal -> Plan -> ToolCall -> ToolOutput -> Claim`：
+
+- `frames`：Goal 为 Plan 提供上下文和边界；
+- `informs`：新证据或可见 reasoning summary 改变下一版 Plan；
+- `supersedes`：Goal/Plan 的版本修订；
+- `invokes / produces / supports`：计划调用工具、工具产生结果、结果支撑结论。
+
+`infer-workflow` 只读取 canonical graph，反推每版 Plan 的 Goal 上下文、动作、产出和结论，并报告缺失的 Goal/Plan/Output/Evidence 关系。它不读取或恢复隐藏 chain-of-thought。
+
+```bash
+acg infer-workflow examples/quickstart/events.jsonl --output inferred-workflow.json
 ```
-
-Mutating Action 还必须同时满足：
-
-- 有显式 `targets` 或 `modifies` 关系；
-- 有 `status=granted` 且 scope 覆盖 `authorized_scope` 的 Approval；
-- Case 处于 `execute`；
-- Run 是 `capture_mode=live`。
-
-Runtime 只负责“选什么、为什么、是否允许、完成后下一步是什么”。实际工具调用属于独立 executor adapter。
-
-## 四条顺序轨道
-
-规划页的顺序检查器把四种含义分开；计划依赖保持静态只读，其余可播放轨道的游标互不改写：
-
-- **Ledger 记录**：严格按 Ledger `sequence` 逐事件回看；`occurred_at` 只用于显示。它回答“记录以什么顺序写入”，不是执行轨迹。
-- **计划依赖**：只读展示 runtime-managed 节点及显式 `precedes` 约束，回答“依赖允许怎样流通”。
-- **候选调度**：按 runtime 门禁及 `(priority, first_sequence, node_id)` 生成稳定拓扑候选，回答“下一种可行顺序是什么”。
-- **已观测执行**：只在输入包含明确的 execution telemetry 时呈现，回答“executor 实际经过了哪些节点”。没有该数据时显示 unavailable，并禁用播放和流动动画。
-
-候选调度不是全局最优证明：当前没有完整替代分支、声明的成本函数和完备成本数据，页面会持续显示 `optimality=not_proven` 边界。所有轨道都是只读可视化，不会重新执行 Action、工具调用或外部副作用。
-
-轨迹真实性由 `capture_mode` 决定：`live` 是处理过程中写入的 Ledger 事件，但原始工具输入输出仍可能不完整；`reconstructed` 是历史证据重建，不是原始逐步轨迹；`synthetic` 只用于演示。公开 Quickstart 的 synthetic runtime 快照只用于展示 frontier 与门禁，不是 execution telemetry；因此“已观测执行”保持 unavailable，也不会播放流动动画。
 
 ## 事实与隐私边界
 
 ```text
 events.jsonl + original artifacts = source of truth
-graph.json / graph.mmd / graph.html = rebuildable projections
+graph.json + trace-model.json + trace.puml + graph.html = rebuildable projections
 ```
 
-- `live`：处理过程中真实记录。
-- `reconstructed`：事后从既有资料重建，不能冒充原始执行轨迹。
-- `synthetic`：测试或演示数据。
+生成的 HTML 内嵌 Trace 数据。公开前必须检查 Ledger、来源引用和生成物，禁止提交客户日志、内部路径、凭证或未脱敏证据。仓库 Quickstart 全部是 synthetic 数据。
 
-生成的 HTML 会内嵌完整 graph 与 event 数据。发布前必须同时审查 Ledger、来源引用和生成物；不要把客户日志、内部路径、凭证或未脱敏证据提交到公开仓库。
-
-本仓库只包含 synthetic Quickstart，不包含任何内部 Case、客户日志或本机路径。
-
-## 命令概览
+## 命令
 
 ```text
-doctor            检查 Python、协议 schema 和可选 Ledger
-init-case         创建新的 live/synthetic Ledger
-validate-ledger   校验 JSONL 结构与连续序号
+doctor            检查 Python、schema 和可选 Ledger
+init-case         创建 live/synthetic Ledger
+validate-ledger   校验 JSONL 与连续 sequence
 lint              执行确定性协议检查
-project           生成 HTML / JSON / Mermaid / Lint / SHA256 receipt
-next-actions      计算 Ready frontier、阻塞原因和最小上下文
-step-status       写入受门禁保护的 runtime Checkpoint
-import-issue      只读导入一个历史 Issue 目录
+project           生成 PlantUML / HTML / JSON / Lint / receipt
+next-actions      计算 Ready frontier 与阻塞原因
+step-status       追加受门禁保护的 runtime Checkpoint
+advise             派生证据缺口、Claim gate 与下一步 Action/ToolCall
+record-recommendation  append-only 记录 derived 推荐快照
+claim-status       通过 Claim gate 追加确认/阻塞状态
+review-paths       对比已记录推荐和后续 Ledger 实际路径
+import-issue      只读导入历史 Issue
+infer-workflow    仅从 canonical graph 反推 Goal/Plan/Tool/Output/Claim
 record-node       追加节点事件
 record-edge       追加关系事件
-record-state      追加 Case 状态变化
+record-state      追加状态变化
 ```
 
-## 开发与验证
+## 开发验证
 
 ```bash
-python -m pip install -e .
 python -m unittest discover -s tests -v
 python -m compileall -q agent_case_graph
 python -m pip wheel --no-deps --wheel-dir .artifacts/wheel .
 ```
 
-当前测试覆盖 Ledger 连续性、历史只读导入、Lint、状态机、Ready frontier、Approval scope、Checkpoint、空间目录确定性、sequence-authoritative 重放、推荐路径环检测、本地化和自包含 HTML。
+CI 覆盖 Windows / Ubuntu 的 Python 3.11–3.13，并单独检查浏览器离线页面。浏览器检查使用可选开发依赖，覆盖五个视图、节点与 Trace/详情联动、键盘选择，以及中英文 390×844 窄屏；详情栏在窄屏下移到画布下方。运行方法见 [Contributing](CONTRIBUTING.md#browser-checks)。这些 synthetic 检查验证功能行为，不构成真实 Agent 收益实验。
 
-## 设计文档
-
-- [MVP architecture](docs/architecture.md)
-- [Open-source runtime and visualization comparison](docs/runtime-open-source-comparison.md)
-- [Contributing](CONTRIBUTING.md)
-- [Security and data boundary](SECURITY.md)
-
-## 已知边界
-
-- 尚无跨 Case 索引、Graph DB、Skill 自动晋升或 Experience Store。
-- 尚无并行 join、lease/claim、多进程 executor、自动 retry、执行级 replay 或 fork；现有 replay 只重放 Ledger 的视觉状态，不重放工具与副作用。
-- SVG 空间视图是确定性 2.5D 投影，不是 WebGL 自由漫游引擎。
-- Importer 只能结构化提取明确支持的 Markdown/Manifest；语义 Curation 仍需审查。
+设计细节见 [architecture.md](docs/architecture.md) 和 [paper visualization notes](docs/runtime-open-source-comparison.md)。
 
 ## License
 

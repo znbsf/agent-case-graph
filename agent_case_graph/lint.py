@@ -109,6 +109,84 @@ def lint_graph(graph: dict[str, Any]) -> list[dict[str, Any]]:
             if not has_eval:
                 add("ACG013", "error", "SkillVersion has no EvalCase", node_id=node_id)
 
+        if node_type in {"DialogueRound", "ExecutionIteration"}:
+            index = attrs.get("index")
+            if not isinstance(index, int) or isinstance(index, bool) or index < 0:
+                add(
+                    "ACG018",
+                    "error",
+                    f"{node_type} index must be an integer >= 0",
+                    node_id=node_id,
+                )
+        if node_type == "DialogueRound":
+            parents = [
+                edge["from"]
+                for edge in incoming[node_id]
+                if edge["type"] == "contains"
+                and nodes.get(edge["from"], {}).get("type") in {"Case", "Run"}
+            ]
+            if len(set(parents)) != 1:
+                add(
+                    "ACG019",
+                    "error",
+                    "DialogueRound must have exactly one Case or Run scope parent",
+                    node_id=node_id,
+                )
+        elif node_type == "ExecutionIteration":
+            parents = [
+                edge["from"]
+                for edge in incoming[node_id]
+                if edge["type"] == "contains"
+                and nodes.get(edge["from"], {}).get("type") == "DialogueRound"
+            ]
+            if len(set(parents)) != 1:
+                add(
+                    "ACG020",
+                    "error",
+                    "ExecutionIteration must have exactly one DialogueRound parent",
+                    node_id=node_id,
+                )
+        elif node_type in {"UserFeedback", "AgentResponse", "Evaluation"}:
+            expected_parent = "ExecutionIteration" if node_type == "Evaluation" else "DialogueRound"
+            has_parent = any(
+                edge["type"] == "contains"
+                and nodes.get(edge["from"], {}).get("type") == expected_parent
+                for edge in incoming[node_id]
+            )
+            if not has_parent:
+                add(
+                    "ACG021",
+                    "error",
+                    f"{node_type} must be contained by {expected_parent}",
+                    node_id=node_id,
+                )
+
+    scoped_indexes: dict[tuple[str, str, int], str] = {}
+    for node in nodes.values():
+        if node["type"] not in {"DialogueRound", "ExecutionIteration"}:
+            continue
+        index = node.get("attrs", {}).get("index")
+        if not isinstance(index, int) or isinstance(index, bool) or index < 0:
+            continue
+        parent_type = "DialogueRound" if node["type"] == "ExecutionIteration" else None
+        parents = [
+            edge["from"]
+            for edge in incoming[node["id"]]
+            if edge["type"] == "contains"
+            and (parent_type is None or nodes.get(edge["from"], {}).get("type") == parent_type)
+        ]
+        for parent in sorted(set(parents)):
+            key = (parent, node["type"], index)
+            if key in scoped_indexes:
+                add(
+                    "ACG022",
+                    "error",
+                    f"duplicate {node['type']} index {index} under {parent}",
+                    node_id=node["id"],
+                )
+            else:
+                scoped_indexes[key] = node["id"]
+
     if root is not None:
         root_state = root.get("attrs", {}).get("current_state")
         root_status = root.get("attrs", {}).get("status")

@@ -13,9 +13,13 @@ from collections import defaultdict
 import heapq
 from typing import Any
 
+from .graph_runtime import RECOMMENDATION_RECORD_KIND
+from .runtime import runtime_nodes_for_run
+
 
 REPLAY_PROTOCOL_VERSION = "replay-0.1"
-RUNTIME_NODE_TYPES = frozenset({"Step", "Action", "Verification"})
+PATH_REVIEW_PROTOCOL_VERSION = "path-review-0.1"
+RUNTIME_NODE_TYPES = frozenset({"Step", "Action", "ToolCall", "Verification"})
 
 
 def _int(value: Any, default: int) -> int:
@@ -126,17 +130,10 @@ def _recommendation(
     graph: dict[str, Any], run_id: str
 ) -> dict[str, Any]:
     nodes_by_id = {node["id"]: node for node in graph.get("nodes", [])}
-    contained = {
-        edge["to"]
-        for edge in graph.get("edges", [])
-        if edge.get("type") == "contains" and edge.get("from") == run_id
-    }
     candidate_ids = {
-        node_id
-        for node_id in contained
-        if node_id in nodes_by_id
-        and nodes_by_id[node_id].get("type") in RUNTIME_NODE_TYPES
-        and nodes_by_id[node_id].get("attrs", {}).get("runtime_managed") is True
+        node["id"]
+        for node in runtime_nodes_for_run(graph, run_id)
+        if node["id"] in nodes_by_id and node.get("type") in RUNTIME_NODE_TYPES
     }
     if not candidate_ids:
         return {
@@ -278,6 +275,165 @@ def _recommendation(
     }
 
 
+def _runtime_event_row(event: dict[str, Any]) -> dict[str, Any]:
+    node = event["node"]
+    return {
+        "sequence": event["sequence"],
+        "event_id": event["event_id"],
+        "node_id": node["id"],
+        "node_type": node["type"],
+        "status": node.get("attrs", {}).get("status"),
+        "actor": dict(event["actor"]),
+        "capture_mode": event["provenance"]["capture_mode"],
+        "source_refs": list(event["provenance"].get("source_refs", [])),
+    }
+
+
+def _unique_node_ids(rows: list[dict[str, Any]]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for row in rows:
+        node_id = row["node_id"]
+        if node_id not in seen:
+            seen.add(node_id)
+            result.append(node_id)
+    return result
+
+
+def _longest_common_subsequence(left: list[str], right: list[str]) -> list[str]:
+    """Stable LCS over node IDs; this compares paths but never adds causality."""
+
+    scores = [[0] * (len(right) + 1) for _ in range(len(left) + 1)]
+    for left_index in range(len(left) - 1, -1, -1):
+        for right_index in range(len(right) - 1, -1, -1):
+            if left[left_index] == right[right_index]:
+                scores[left_index][right_index] = 1 + scores[left_index + 1][right_index + 1]
+            else:
+                scores[left_index][right_index] = max(
+                    scores[left_index + 1][right_index], scores[left_index][right_index + 1]
+                )
+    result: list[str] = []
+    left_index = right_index = 0
+    while left_index < len(left) and right_index < len(right):
+        if left[left_index] == right[right_index]:
+            result.append(left[left_index])
+            left_index += 1
+            right_index += 1
+        elif scores[left_index + 1][right_index] >= scores[left_index][right_index + 1]:
+            left_index += 1
+        else:
+            right_index += 1
+    return result
+
+
+def build_path_review(
+    graph: dict[str, Any], events: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Compare recorded derived recommendations with later Ledger action records.
+
+    The recommendation is deliberately marked as derived.  The actual side is
+    only a sequence-authoritative extraction of already-recorded Ledger events;
+    it is not a re-execution trace and it makes no claim about omitted actions.
+    """
+
+    recommendations = [
+        event
+        for event in sorted(events, key=lambda item: (item["sequence"], item["event_id"]))
+        if event.get("kind") == "node.recorded"
+        and event.get("node", {}).get("type") == "Decision"
+        and event.get("node", {}).get("attrs", {}).get("record_kind")
+        == RECOMMENDATION_RECORD_KIND
+    ]
+    comparisons: list[dict[str, Any]] = []
+    for index, recommendation in enumerate(recommendations):
+        attrs = recommendation["node"].get("attrs", {})
+        run_id = recommendation.get("run_id")
+        end_sequence = next(
+            (
+                later["sequence"]
+                for later in recommendations[index + 1 :]
+                if later.get("run_id") == run_id
+            ),
+            None,
+        )
+        actual_rows = [
+            _runtime_event_row(event)
+            for event in events
+            if event.get("run_id") == run_id
+            and event["sequence"] > recommendation["sequence"]
+            and (end_sequence is None or event["sequence"] < end_sequence)
+            and event.get("kind") == "node.recorded"
+            and event.get("node", {}).get("type") in RUNTIME_NODE_TYPES
+            and event.get("node", {}).get("attrs", {}).get("runtime_managed") is True
+            and event.get("node", {}).get("attrs", {}).get("data_origin") != "derived"
+            and event.get("node", {}).get("attrs", {}).get("source_derived") is not True
+        ]
+        actual_rows.sort(key=lambda item: (item["sequence"], item["event_id"]))
+        recommended_ids = _unique_node_ids(
+            [
+                {"node_id": node_id}
+                for node_id in attrs.get("recommended_node_ids", [])
+                if isinstance(node_id, str) and node_id
+            ]
+        )
+        actual_ids = _unique_node_ids(actual_rows)
+        matched = _longest_common_subsequence(recommended_ids, actual_ids)
+        unobserved = [node_id for node_id in recommended_ids if node_id not in matched]
+        unplanned = [node_id for node_id in actual_ids if node_id not in matched]
+        if not recommended_ids:
+            status = "no_action_recommended"
+        elif not actual_rows:
+            status = "awaiting_recorded_actual_path"
+        elif not unobserved and not unplanned:
+            status = "aligned"
+        else:
+            status = "diverged"
+        comparisons.append(
+            {
+                "recommendation_node_id": recommendation["node"]["id"],
+                "recommendation_event_id": recommendation["event_id"],
+                "recommendation_sequence": recommendation["sequence"],
+                "run_id": run_id,
+                "actual_window_end_sequence": end_sequence,
+                "status": status,
+                "recommended": {
+                    "data_origin": "derived",
+                    "not_native_telemetry": True,
+                    "node_ids": recommended_ids,
+                    "record_capture_mode": recommendation["provenance"]["capture_mode"],
+                    "source_ledger_sha256": attrs.get("source_ledger_sha256"),
+                },
+                "actual": {
+                    "data_origin": "recorded_ledger_events",
+                    "order_authority": "ledger.sequence",
+                    "capture_profile": _capture_profile(actual_rows) if actual_rows else {
+                        "track_kind": "unavailable",
+                        "capture_modes": [],
+                        "completeness": "unknown",
+                        "boundary": "No subsequent runtime node records in this comparison window.",
+                    },
+                    "node_ids": actual_ids,
+                    "events": actual_rows,
+                },
+                "comparison": {
+                    "data_origin": "derived",
+                    "not_native_telemetry": True,
+                    "algorithm": "longest_common_subsequence_over_recorded_node_ids",
+                    "matched_node_ids": matched,
+                    "unobserved_recommended_node_ids": unobserved,
+                    "unrecommended_recorded_node_ids": unplanned,
+                },
+            }
+        )
+    return {
+        "protocol_version": PATH_REVIEW_PROTOCOL_VERSION,
+        "visual_only": True,
+        "reexecutes_actions": False,
+        "comparison_origin": "derived",
+        "comparisons": comparisons,
+    }
+
+
 def build_replay_catalog(
     graph: dict[str, Any], events: list[dict[str, Any]]
 ) -> dict[str, Any]:
@@ -334,7 +490,13 @@ def build_replay_catalog(
         "visual_only": True,
         "reexecutes_actions": False,
         "runs": runs,
+        "path_review": build_path_review(graph, events),
     }
 
 
-__all__ = ["REPLAY_PROTOCOL_VERSION", "build_replay_catalog"]
+__all__ = [
+    "PATH_REVIEW_PROTOCOL_VERSION",
+    "REPLAY_PROTOCOL_VERSION",
+    "build_path_review",
+    "build_replay_catalog",
+]
