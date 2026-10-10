@@ -34,6 +34,7 @@ CONTEXT_EDGE_TYPES = {
     "supports",
     "targets",
     "uses",
+    "frames",
     "informs",
 }
 

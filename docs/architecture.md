@@ -1,108 +1,16 @@
-# Agent Case Graph MVP Architecture
+# Agent Case Graph architecture
 
-## 1. Product statement
+## 1. Product boundary
 
-Agent Case Graph 是一个以 `Case` 为聚合根、以 append-only `Event` 为事实记录、以
-`Evidence -> Claim` 为推理溯源、以 `Approval -> Action -> Verification` 为状态变更边界、
-以 `Pattern -> SkillVersion -> EvalCase` 为知识晋升链的图协议和本地工具。runtime-0.1
-进一步把显式 `precedes / blocked_by / approved_by` 关系编译为 Agent 的 Ready frontier。
-
-## 2. Three graph families
-
-### Definition Graph
-
-描述“允许怎样处理问题”：Workflow、StepDefinition、Agent、Skill、Tool、Policy、Verifier。
-
-### Run Graph
-
-描述“这一次实际发生什么”：Case、Run、Step、Artifact、Action、Approval、Verification、Event。
-
-### Knowledge Graph
-
-描述“从多个 Case 学到了什么”：Claim、RootCause、Pattern、Runbook、SkillVersion、EvalCase。
-
-它们共享稳定 ID，但由不同 Projection 展示，避免一张总图变成无法阅读的蜘蛛网。
-
-## 3. Node model
-
-MVP 支持以下节点类型：
+ACG is an evidence-first trace protocol, not a drawing engine. The durable layer records what happened and what relations were explicitly declared. Rendering remains replaceable.
 
 ```text
-Graph
-ProblemType
-Case
-Goal
-AcceptanceCriterion
-Run
-Step
-Actor
-Capability
-Agent
-Skill
-Tool
-Target
-EnvironmentSnapshot
-Artifact
-Observation
-Claim
-RootCause
-Decision
-Uncertainty
-ScopeBoundary
-Action
-Approval
-Policy
-Verification
-VerificationReceipt
-Pattern
-Runbook
-SkillVersion
-EvalCase
-DriftFinding
-ExternalIssue
+Event Ledger -> Canonical Graph -> paper-trace-0.1 -> loop/sequence projections -> PlantUML / HTML
 ```
 
-建成节点的判断标准：需要独立引用、版本化、授权、验证、复用，或者拥有独立生命周期。
-时间、置信度、Git SHA、平台、Hash 等通常是属性。
+## 2. Durable layer
 
-## 4. Edge model
-
-MVP 支持带方向和语义的边：
-
-```text
-instance_of
-contains
-has_run
-targets
-runs_in
-uses
-invokes
-precedes
-produces
-derived_from
-supports
-refutes
-explains
-approved_by
-guarded_by
-modifies
-checks
-verified_by
-satisfies
-blocked_by
-retry_of
-regression_of
-generalizes_to
-implemented_by
-tested_by
-supersedes
-deprecated_by
-references
-```
-
-## 5. Event sourcing
-
-Ledger 只追加四种基础事件：
+The append-only ledger has four event kinds:
 
 ```text
 graph.declared
@@ -111,196 +19,268 @@ edge.recorded
 state.changed
 ```
 
-领域语义位于 node/edge type 中，基础事件保持稳定。事件必须包含：
+Every event has a stable `event_id`, contiguous `sequence`, actor and provenance. `capture_mode` is always one of `live / reconstructed / synthetic`.
+
+The canonical graph retains stable IDs, typed nodes and typed edges. Runtime gates, lint and replay consume this graph; no renderer is allowed to infer causality from coordinates or timestamps.
+
+The sequence projection groups semantic nodes by projected `ExecutionIteration`
+and linearizes typed temporal constraints; the first source Ledger sequence is
+only a stable tie-breaker. It is deliberately a readability view: vertical
+adjacency is not causality. Typed relations such as `frames`, `informs`,
+`supersedes`, `supports`, `invokes`, and `produces` remain canonical graph edges
+and are exposed by the workflow/evidence views.
+
+## 3. Review projection
+
+`trace_model.build_trace_model()` is the only adapter between the canonical graph and both renderers.
 
 ```text
-schema_version
-event_id
-case_id
-sequence
-occurred_at
-kind
-actor
-provenance.capture_mode = live | reconstructed | synthetic
+Workflow Node
+  phase = context | plan | inspect | execute | validate | claim
+  id + label + type + status
+
+Evidence Node
+  Observation | Artifact | Verification | Claim | AcceptanceCriterion | Uncertainty
+
+Trace Record
+  sequence + event kind + actor + capture mode + source refs
 ```
 
-状态变化不覆盖旧值；当前状态由 `state.changed` 历史投影得到。
-
-## 6. Case lifecycle
+The review hierarchy keeps raw records available, makes evidence inspectable, and adds a derived nested-loop overview above workflow phases.
 
 ```text
-intake -> observe -> analyze -> plan -> authorize -> execute -> verify -> close
-                                |                         |
-                                +---- blocked <-----------+
-
-close -> promote | reopen | regress
+DialogueRound (outer conversation loop)
+  └─ ExecutionIteration (inner agent execution loop)
+       └─ canonical Goal / Plan / ToolCall / ToolOutput / Evaluation nodes
 ```
 
-MVP 只允许协议中声明的状态转换。失败 Run 和被反驳 Claim 不删除。
+`DialogueRound`, `ExecutionIteration`, `UserFeedback`, `AgentResponse`, and
+`Evaluation` may be recorded as canonical nodes. Their parent scope is declared
+only by `contains`; their causal order still requires authored edges.
+`Aggregate` is never a canonical node type. It exists only inside the derived
+`loop-model.json`/HTML model.
 
-## 7. Evidence semantics
+The loop projection is non-mutating. It preserves member node IDs, internal and
+cycle edge IDs, cross-group raw endpoints and provenance. Nodes or edges that
+cannot be assigned are reported explicitly as unmapped. Missing dialogue input
+evidence produces a display fallback, not a claimed user turn. Acceptance and
+first-attempt success remain unknown without an explicit accepted signal.
 
-```text
-Artifact      原始文件、输出、日志、代码、DB、测试结果
-Observation   从 Artifact 直接提取的事实
-Claim         人或 Agent 提出的解释
-```
+The Sequence projection linearizes one execution aggregate from explicit typed
+temporal constraints. Forward relations such as `precedes`, `invokes`, and
+`produces` retain direction; review-style relations such as `checks` and
+`supersedes` are interpreted in their temporal direction. Ready peers use the
+first source Ledger sequence only as a deterministic tie-breaker. The original
+source sequence remains visible, and adjacency in the resulting total order is
+not promoted to a causal claim.
 
-`confidence` 只描述推理者信心，不代表真实性。确认状态还必须考虑：
+The following phase-layout details describe the static/legacy technical
+renderer (`workbench-legacy.html`), not the new stage-first workbench.
+Its Workflow tab is a deliberate projection: it includes workflow nodes plus
+evidence nodes that participate in a forward layout edge. Other evidence is
+not deleted; it remains in the Evidence tab, source Trace, and node relations.
+Containment remains available in node details, but it does not constrain or
+appear in the main workflow layout. Scope membership is not an execution
+dependency. Large ranks wrap after three cards without changing their canonical
+rank.
 
-```text
-support / refutation
-freshness
-scope
-independent verification
-source provenance
-```
+Within one rank, horizontal order is display-only. The HTML renderer performs
+six top-down/bottom-up neighbor-median sweeps, then uses the node's first source
+sequence and stable ID as tie-breakers. This reduces crossings without turning
+source order into a causal edge.
 
-## 8. Bootstrap levels
+The HTML router assigns separate source and target ports for fan-out and
+fan-in. Adjacent forward edges use bottom-to-top curves; reverse relations use
+top-to-bottom curves; same-rank relations use row-external lanes. When one
+canonical rank wraps across visual rows, or an edge spans more than one visual
+row, the route uses a side channel so it does not pass through intermediate
+cards. These route classes are display metadata only and never rewrite edge
+direction, type, or canonical rank.
 
-### Level 0: Seed
+The Evidence tab deliberately expands one authored evidence hop from nodes
+marked as evidence. That neighborhood is computed from a fixed seed set, so it
+is deterministic without pulling an entire connected component into a single
+review view.
 
-用手工 JSONL 记录用户授权、目标、完成标准和计划。这是唯一的人工 Seed。
+## 4. Relation policy
 
-### Level 1: Self projection
+Only authored canonical edges, or display summaries carrying exact authored
+edge witnesses, are rendered. The following styling/ranking policy applies to
+the static/legacy renderer; it does not establish verified causality.
 
-Projector 读取 Seed Ledger，生成自身的 graph.json、Mermaid 和 HTML。
+- solid: forward workflow or dependency relations such as `frames`, `precedes`, `invokes`, `produces`, `targets`;
+- dotted: evidence and provenance such as `supports`, `checks`, `uses`, `informs`, `derived_from`;
+- scope-only: containment relations such as `contains`; they remain in node details and never affect DAG rank.
 
-### Level 2: Self recording
+Only the forward workflow/dependency set constrains DAG rank. Evidence and
+provenance relations remain authored facts, but they are reviewed in the HTML
+Evidence tab and node details rather than fed back into the workflow topology.
+This prevents a valid claim-to-evidence audit loop from turning the main graph
+into a false one-node-per-rank chain.
 
-CLI 用 append-only 命令记录实现、测试和验证事件。
+The renderer never creates a missing support path from node types. A final Claim without explicit support remains visibly incomplete and is handled by lint.
 
-### Level 3: Historical reconstruction
+### Graph-only workflow inference
 
-Importer 只读导入一个真实 Case；所有事后重建事件标记为 reconstructed。
+The optional inference pass consumes the canonical graph, not the source
+conversation. `frames` binds a Goal revision to a Plan revision; `invokes` and
+`produces` recover actions and outputs; `supports` connects outputs to claims;
+`informs` records visible evidence or reasoning summaries that changed a plan.
+It reports semantic gaps such as a plan without goal context or a tool call
+without an explicit output. It cannot reconstruct hidden reasoning or raw tool
+payloads that were intentionally not modeled.
 
-### Level 4: Live dogfooding
+## 5. Two renderers, one model
 
-后续新 Case 从 intake 开始实时写入 Ledger。
+### PlantUML
 
-## 9. MVP deterministic lint
+`trace.puml` is the static contract review:
 
-至少检查：
+- top-down DAG;
+- branch and merge using only forward layout edges;
+- phase color, type, status and relation labels;
+- deterministic text artifact suitable for diffs.
 
-1. Root node 缺失或不是 Case。
-2. Edge 引用不存在的节点。
-3. Case 没有 Run。
-4. confirmed Claim 没有 supports 证据。
-5. mutating Action 没有 Approval。
-6. completed/closed Case 没有 VerificationReceipt。
-7. Artifact 缺少来源、SHA256 或 capture mode。
-8. 非法 Case 状态转换。
-9. SkillVersion 没有来源 Pattern 或 EvalCase。
+It does not implement filters, evidence back-links, details, live refresh or
+artifact preview.
 
-## 10. Historical importer boundary
+### HTML
 
-Importer 第一版只读取指定 Issue 目录中的：
+`graph.html` is the default key-path graph. `story_graph.build_story_model()`
+consumes the reader scopes without changing canonical nodes or verdicts.
+Without annotations, it displays every stage and its recorded conclusions.
+An explicit `project --presentation` JSON can assign main/branch cards and up to
+three concise outcome annotations per card. It must match the exact source
+ledger SHA256, cover all stages exactly once, reference existing source nodes,
+and attach branches only to main cards. Outcome references must be in the
+card's scope. Validation checks structure and staleness, not semantic truth.
+Tones such as `gain`, `negative`, or `paused` are editorial, not verification.
 
-```text
-README.md
-EVIDENCE.md
-MANIFEST.md
-MANIFEST.json
-```
+The graph uses measured HTML card geometry with SVG layout connectors; no
+fixed-width text truncation or fit-to-screen font shrinking is needed. Dashed
+connectors mean review order or topic grouping, never causality. Selecting a
+card expands only its scope below the row and preserves its screen position.
+The local action/output/conclusion arrows require matching original typed
+relations. Shared refuted hypotheses remain counterevidence, not owned claims
+that could import sibling-stage results. Branches reflow below their parent on
+narrow screens. Keyboard activation, Escape, deep links and browser Back work
+without external dependencies. `story-model.json` records the display model.
 
-它不会递归扫描整个 workspace，不会读取任意附件，也不会改写输入。输出路径必须显式指定。
+`reader.html` is the auxiliary, self-contained reading view. `reader.build_reader_model()`
+projects loop members into source-linked question / action / result / conclusion
+spans. Scope evidence uses one explicit relation hop, ignoring containment.
+For Plan-based spans, results must be produced by that Plan's invoked actions;
+an informing output from an earlier span remains context, not a new result.
+No label sentiment parsing, new verification verdicts, or inferred causal edges
+are introduced. Unknown questions/coverage remain unknown. Capture modes and
+recorded missing-content counts are prominent. Raw fields are collapsed.
 
-## 11. Workspace modes and projections
+The reader has its own `review-model.json` contract. Its HTML/CSS/JavaScript live
+under packaged `web/` resources, are inlined into the generated page, and use no
+external runtime dependencies. Source text is escaped in the JSON script block
+and rendered with `textContent`. Only explicit http/https/codex/file source
+references become links; other schemes remain inert, and nothing is auto-loaded.
 
-HTML 工作台用五种任务模式组织同一份事实，而不是生成五份图：
+`workbench.html` uses a separate `evidence-workbench-0.1` model:
 
-- Overview：汇总 Knowledge / Control / Execution 三层语义与 Case 边界。
-- Plan：承载显式依赖图、当前候选调度和顺序检查器。
-- Run：只呈现 runtime frontier 与状态，零数量状态压缩为摘要。
-- Review：归纳记录边界、运行结论和未闭合缺口；需要逐步检查时跳回 Plan。
-- Evidence：枚举 `supports / explains / implemented_by / checks` 形成的所有显式分支路径，审查论证和验收；不按节点类型推断缺失边。
+- left: collapsible stage navigation;
+- center: Stages / Stage relations / Evidence / Sequence / Source records;
+- right: on-demand node, canonical-edge, aggregate-witness or research details;
+- selection can filter to one explicit relation hop, not just dim the full graph;
+- locale bundles alter display labels only.
 
-Plan 提供三个辅助视图，它们共享 canonical ID、选中状态和详情侧栏：
+Each canonical node belongs to exactly one display group. Shared ownership and
+unscoped nodes have explicit separate groups. Internal edge IDs plus cross-group
+`source_edge_ids` cover every original edge exactly once. Source endpoints,
+types, provenance and statuses are unchanged. Stage-local context follows the
+reader scope, keeping shared refuted claims from importing sibling results.
 
-- Dependency Flow：主画布只显示显式 `precedes` 偏序，Runtime 门禁与主要阻塞由同页检查器呈现；不从布局或记录顺序推断因果。
-- Orthogonal Planes：在 `x/y/z >= 0` 的第一卦限三面角中斜向展示 `XY = Knowledge`、`XZ = Control`、`YZ = Execution`；X/Y/Z 三条正向共享轴分别表达 Knowledge-Control、Execution-Knowledge、Control-Execution 接口。
-- Parallel Layers：Knowledge、Control、Execution 是三张平行投影面；同一 canonical node 可以有多个显示实例，但共享同一个 source ID 与选中状态。
+Local graphs use measured HTML cards and a simplified stable layered layout;
+the obstacle-aware orthogonal router does not reverse or delete source edges.
+All-stage role columns and stage order are display-only. Sequence relations
+remain separately styled as order; evidence, containment and other recorded
+relations retain their types. Overview filters hide detail without deleting it.
+Zoom scales a scrollable world rather than resetting the scroll position;
+source events are paginated rather than duplicated next to the whole graph.
 
-Unified Drawer 统一承载节点属性、直接关系、来源、原始 JSON 和 Lint；Ledger 逐项检查只在 Plan 的顺序检查器中出现，不再为每种模式复制详情卡片或播放器。
+This is not a reproduction of dot, nor a validated usability experiment.
+See [research basis and validation boundaries](workbench-research-basis.md).
+The original technical renderer remains available as `workbench-legacy.html`.
 
-`spatial-0.1` 是 Projector 生成的确定性语义目录，包括 layer membership、三组 pairwise interface、所选 runtime instance，以及 canonical relation 的 `flow_kind / actual / animated`。它不保存坐标、相机或避让结果。五种模式和三个 Plan 视图都只是同一目录的不同投影，不是不同事实源。
+The HTML contains no CDN dependency and never executes an Action.
 
-空间图只绘制显式 canonical edge。`first_sequence` 只能用于稳定排序与布局，不能被解释成因果；移动粒子也只叠加在所选 Run 的显式关系上。历史图没有 runtime catalog 时，Execution membership、instance 和动态执行流保持为空，并显示缺失边界。
+## 6. Runtime remains separate
 
-HTML 使用内嵌数据和原生 JavaScript，不依赖 CDN；JSON 和 Mermaid 用于审查与版本比较。
+Only explicit `runtime_managed=true` Step, Action, ToolCall and Verification nodes inside a Run (including nested `contains` scopes) enter the control plane. `next-actions` uses `precedes / blocked_by / approved_by`; `step-status` appends a checkpoint after validating the transition. Approval scope matching is exact-token based (`*`, a list, or comma/semicolon-delimited scopes), not substring matching.
 
-### 11.1 Sequence inspector catalog
+An executable node's minimal context packet follows incoming context lineage for
+at most three hops, so `Action <- Plan <- Goal/ReasoningSummary` is available
+without loading the whole graph.
 
-Projector 从同一份 canonical graph 与原始 Ledger 派生 `replay-0.1`。它不新增事实，也不调用 executor：
+Context construction shares the snapshot's incoming/outgoing adjacency indexes.
+The packet includes the selected `task` plus relevant `nodes`, whitelisted file,
+input/output and acceptance references, event IDs and source references. Raw tool
+payloads remain in referenced artifacts. `selected_node_count` includes the task;
+`node_reduction_ratio` and its compatibility alias `context_reduction_ratio`
+measure node counts only (`measurement_basis=node_count`), not tokens or quality.
 
-- Ledger 记录轨道（协议中的 `actual.frames`）只按 Ledger `sequence` 排序；墙上时间只显示，不参与因果排序。它表示记录顺序，不自动升级为 execution telemetry。
-- 计划依赖轨道直接来自 runtime-managed 子图和显式 `precedes`，只读展示约束，不设置播放动画。
-- 候选调度轨道（协议中的 `retrospective`）只从 runtime 门禁和显式依赖派生稳定拓扑候选。
-- 已观测执行轨道只接受明确标记的 execution telemetry；缺失时必须显示 unavailable、禁用播放，并且不得用 Ledger 或 synthetic runtime 状态补造流动动画。
-- 连续 `node.recorded` 的状态变化可以从前一事件推断，但必须标记为 inferred。
-- `capture_mode=live/reconstructed/synthetic` 的证据边界必须随轨迹显示。
-- `visual_only=true` 且 `reexecutes_actions=false` 是协议级安全边界。
+All executable node types with `mutating=true` use the same gates. Approval
+endpoints must actually be `Approval` nodes. A `targets` endpoint must be a
+`Target`; `modifies` may point to a `Target` or `Artifact`. A missing Run capture
+mode never defaults to live for mutation readiness.
 
-`retrospective` 只在所选 Run 的 runtime-managed `Step / Action / Verification` 子图上工作，并且只接受显式 `precedes`。无环时输出稳定拓扑顺序；有环时拒绝生成。当前没有声明成本函数，也没有证明候选图完备，因此固定输出 `optimality=not_proven`，只能称为“候选调度”。计划依赖轨道保持静态只读；Ledger、候选和已观测执行各自保留独立游标，不能相互改写。
+State-dependent writes use optimistic concurrency: events and their SHA256 come
+from the same byte snapshot, and `append_event` checks both the expected last
+sequence and that digest under the ledger lock before writing. Conflicts fail
+with a reload/retry error; there is no automatic retry using stale gate results.
+This applies to step checkpoints, claim confirmations and recommendation
+snapshots. Checkpoint IDs and attempts therefore match the accepted sequence.
+Step checkpoints preserve the selected Run's declared capture mode. This guards
+cooperating ledger writers; it is not an executor lease or tool idempotency layer.
 
-公开 Quickstart 的 `capture_mode=synthetic` runtime 快照只演示 frontier、状态叠加与阻塞原因，不是 executor 产生的 execution telemetry；因此已观测执行轨道必须保持 unavailable。
+The visual trace can explain runtime state but cannot declare a node Ready, grant approval or invoke tools.
 
-## 12. Runtime control plane
+### Graph-native advisory control plane
 
-### 12.1 三层分离
+`graph-runtime-0.1` consumes the same canonical graph but remains derived and side-effect free. It returns a Ready `Action`/`ToolCall` recommendation only for an explicit runtime-managed node; it never manufactures a ToolCall from labels, timestamps, layout, or an embedding match.
 
-```text
-Knowledge / Provenance Graph
-  Case、Evidence、Claim、Decision、Action、Verification
-                       |
-                       | 显式选择 runtime_managed 节点
-                       v
-Control Graph
-  Run contains Step/Action/Verification + precedes/blocked_by/approved_by
-                       |
-                       | next-actions / step-status
-                       v
-Execution Overlay
-  pending/ready/running/blocked/completed/failed + checkpoint event
-```
+For each `Claim` or `RootCause`, the claim gate follows only declared incoming `supports` / `refutes` edges. A confirmation needs at least one complete non-derived evidence node and a non-derived `supports` relation, and can be tightened with `minimum_support_count`, `required_evidence_ids`, `required_evidence_types`, and `required_capture_modes`. Claim, evidence and relation must each have one identical explicit Run owner, or all three must be global; other-Run, global-to-Run, and multi-Run inputs are excluded rather than silently shared. Pending, failed, partial, derived, or unsupported source nodes are reported as evidence gaps; usable refuting evidence blocks confirmation. `claim-status --status confirmed` stores a derived gate receipt and only infers an omitted Run when the Claim has one unique owner, while the low-level Ledger format remains able to faithfully import pre-existing reconstructed history.
 
-展示层只能投影以上数据，不能自行决定节点是否 Ready。历史 Action 默认不是执行任务；只有
-`attrs.runtime_managed=true` 且被 Run `contains` 的 `Step / Action / Verification` 进入控制图。
+`record-recommendation` records a derived `Decision` snapshot (`data_origin=derived`, `not_native_telemetry=true`) with the source Ledger hash and selected node IDs. `review-paths` later compares that snapshot with subsequent runtime node records using Ledger sequence. It labels the recommendation and comparison as derived, labels the actual side by its original capture mode, and never re-executes or invents missing actions.
 
-### 12.2 Ready frontier
+### Evidence completion states
 
-Runtime 只使用显式关系，不从 label、DOM 布局或 `first_sequence` 猜测依赖：
+Evidence needs an explicitly declared status from its type's allow-list:
 
-1. `precedes: A -> B` 表示 A 成功后 B 才可能 Ready。
-2. `blocked_by: A -> X` 表示 X 未解决时 A 被阻塞。
-3. mutating Action 必须有 `targets/modifies`、scope 覆盖的 granted Approval、live Run，并且 Case 当前处于 `execute`。
-4. `precedes` 有环时整个 Run 标记为 invalid，不选择下一节点。
-5. 多个 Ready 节点按 `(priority, first_sequence, node_id)` 稳定排序；这只是选择优先级，不是伪造因果。
+| Node type | Accepted statuses |
+| --- | --- |
+| Artifact | recorded, captured, available, completed, verified |
+| EnvironmentSnapshot | recorded, captured, completed, verified |
+| Observation | recorded, observed, confirmed, completed, verified |
+| ToolOutput | completed, succeeded |
+| Verification / VerificationReceipt | completed, succeeded, passed, verified |
+| AcceptanceCriterion | satisfied, passed, verified |
 
-### 12.3 Context packet
+Missing, unknown, blocked and skipped statuses cannot open the claim gate.
+`minimum_support_count` must be a positive integer and counts distinct evidence
+node IDs, not parallel copies of a supports relation. Historical success paths
+also require a receipt with an accepted completion status. Existing ledgers
+remain readable, but unspecified receipt/evidence statuses no longer qualify
+automatically; add an explicit evidence-backed status event when appropriate.
 
-Ready 节点不会接收整张 Case 图。Runtime 只选取：
+## 7. Historical reconstruction
 
-- Case 与当前 Run；
-- 直接 `targets / uses / invokes / approved_by / guarded_by / checks / satisfies` 邻居；
-- 显式前置节点及其 `produces` 输出；
-- Run 级目标和引用。
+The importer is read-only. Historical events are marked `reconstructed`; the page repeats that boundary when the selected node originates from reconstructed records. Visual replay is always `visual_only=true` and `reexecutes_actions=false`.
 
-输出同时报告 `selected_node_count / full_graph_node_count`，使上下文裁剪可以被测量。原始
-payload 继续通过 Artifact/source ref 引用，不能直接塞到边或上下文包中。
+Cross-case reuse is also derived. A current candidate may match history only through an explicit `reuse_key` / `reuse_keys` attribute, never label similarity. A historical path is called `verified_success_path` only when its Case has an explicit closed/completed state and that same historical Run has a non-derived `VerificationReceipt`; a receipt in another Run cannot qualify it. Reconstructed or synthetic matches remain `advisory_only_non_live_history` and never prove a current live Run.
 
-### 12.4 Checkpoint boundary
+## 8. Deliberately removed from the reset
 
-`step-status` 是 runtime-0.1 的持久化门：
+- orthogonal planes and 3D projection;
+- five parallel workspace modes;
+- duplicated node cards across Overview/Plan/Run/Review/Evidence;
+- animated execution lines without explicit telemetry;
+- Mermaid output;
+- renderer-owned spatial catalog.
 
-```text
-Ready -> Running -> Completed | Failed
-```
-
-Running 之前重新计算所有图门禁；Completed/Failed 只能从 active 状态写入。状态仍通过
-append-only `node.recorded` 事件保存，Checkpoint ID 绑定事件序号，因此崩溃后可由 Ledger
-重建当前 frontier。
-
-runtime-0.1 不自动执行任意命令，也没有并发 lease、条件边、join、retry、执行级 replay 或 fork。
-这些能力必须在明确 executor contract、幂等键、超时、输出上限、权限和副作用恢复协议后增加。
-现有 `replay-0.1` 只读回放 Ledger 的视觉状态；它不能、也不会重放 mutating Action。
+Future analytical views such as embeddings or cross-run process mining must be optional consumers of the canonical graph. They cannot change the core DAG or become new facts.

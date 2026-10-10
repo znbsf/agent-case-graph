@@ -25,7 +25,14 @@ NODE_TYPES = {
     "Case",
     "Goal",
     "Plan",
+    "DialogueRound",
+    "ExecutionIteration",
+    "UserFeedback",
+    "AgentResponse",
+    "Evaluation",
+    "ReasoningSummary",
     "ToolCall",
+    "ToolOutput",
     "AcceptanceCriterion",
     "Run",
     "Step",
@@ -85,6 +92,7 @@ EDGE_TYPES = {
     "supersedes",
     "deprecated_by",
     "references",
+    "frames",
     "informs",
 }
 
