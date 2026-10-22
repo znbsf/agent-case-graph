@@ -5,7 +5,7 @@
 ACG is an evidence-first trace protocol, not a drawing engine. The durable layer records what happened and what relations were explicitly declared. Rendering remains replaceable.
 
 ```text
-Event Ledger -> Canonical Graph -> paper-trace-0.1 -> loop/sequence projections -> PlantUML / HTML
+Event Ledger -> Canonical Graph -> graph.html
 ```
 
 ## 2. Durable layer
@@ -21,86 +21,11 @@ state.changed
 
 Every event has a stable `event_id`, contiguous `sequence`, actor and provenance. `capture_mode` is always one of `live / reconstructed / synthetic`.
 
-The canonical graph retains stable IDs, typed nodes and typed edges. Runtime gates, lint and replay consume this graph; no renderer is allowed to infer causality from coordinates or timestamps.
+The canonical graph retains stable IDs, typed nodes and typed edges. Runtime gates and lint consume this graph; no renderer is allowed to infer causality from coordinates or timestamps.
 
-The sequence projection groups semantic nodes by projected `ExecutionIteration`
-and linearizes typed temporal constraints; the first source Ledger sequence is
-only a stable tie-breaker. It is deliberately a readability view: vertical
-adjacency is not causality. Typed relations such as `frames`, `informs`,
-`supersedes`, `supports`, `invokes`, and `produces` remain canonical graph edges
-and are exposed by the workflow/evidence views.
+## 3. View
 
-## 3. Review projection
-
-`trace_model.build_trace_model()` is the only adapter between the canonical graph and both renderers.
-
-```text
-Workflow Node
-  phase = context | plan | inspect | execute | validate | claim
-  id + label + type + status
-
-Evidence Node
-  Observation | Artifact | Verification | Claim | AcceptanceCriterion | Uncertainty
-
-Trace Record
-  sequence + event kind + actor + capture mode + source refs
-```
-
-The review hierarchy keeps raw records available, makes evidence inspectable, and adds a derived nested-loop overview above workflow phases.
-
-```text
-DialogueRound (outer conversation loop)
-  └─ ExecutionIteration (inner agent execution loop)
-       └─ canonical Goal / Plan / ToolCall / ToolOutput / Evaluation nodes
-```
-
-`DialogueRound`, `ExecutionIteration`, `UserFeedback`, `AgentResponse`, and
-`Evaluation` may be recorded as canonical nodes. Their parent scope is declared
-only by `contains`; their causal order still requires authored edges.
-`Aggregate` is never a canonical node type. It exists only inside the derived
-`loop-model.json`/HTML model.
-
-The loop projection is non-mutating. It preserves member node IDs, internal and
-cycle edge IDs, cross-group raw endpoints and provenance. Nodes or edges that
-cannot be assigned are reported explicitly as unmapped. Missing dialogue input
-evidence produces a display fallback, not a claimed user turn. Acceptance and
-first-attempt success remain unknown without an explicit accepted signal.
-
-The Sequence projection linearizes one execution aggregate from explicit typed
-temporal constraints. Forward relations such as `precedes`, `invokes`, and
-`produces` retain direction; review-style relations such as `checks` and
-`supersedes` are interpreted in their temporal direction. Ready peers use the
-first source Ledger sequence only as a deterministic tie-breaker. The original
-source sequence remains visible, and adjacency in the resulting total order is
-not promoted to a causal claim.
-
-The following phase-layout details describe the static/legacy technical
-renderer (`workbench-legacy.html`), not the new stage-first workbench.
-Its Workflow tab is a deliberate projection: it includes workflow nodes plus
-evidence nodes that participate in a forward layout edge. Other evidence is
-not deleted; it remains in the Evidence tab, source Trace, and node relations.
-Containment remains available in node details, but it does not constrain or
-appear in the main workflow layout. Scope membership is not an execution
-dependency. Large ranks wrap after three cards without changing their canonical
-rank.
-
-Within one rank, horizontal order is display-only. The HTML renderer performs
-six top-down/bottom-up neighbor-median sweeps, then uses the node's first source
-sequence and stable ID as tie-breakers. This reduces crossings without turning
-source order into a causal edge.
-
-The HTML router assigns separate source and target ports for fan-out and
-fan-in. Adjacent forward edges use bottom-to-top curves; reverse relations use
-top-to-bottom curves; same-rank relations use row-external lanes. When one
-canonical rank wraps across visual rows, or an edge spans more than one visual
-row, the route uses a side channel so it does not pass through intermediate
-cards. These route classes are display metadata only and never rewrite edge
-direction, type, or canonical rank.
-
-The Evidence tab deliberately expands one authored evidence hop from nodes
-marked as evidence. That neighborhood is computed from a fixed seed set, so it
-is deterministic without pulling an entire connected component into a single
-review view.
+`renderer.py` writes one self-contained `graph.html`: a layered top-down layout where a node sits one row below its deepest earlier predecessor (ledger order breaks cycles) and columns follow ledger order. Every canonical node and edge is drawn; `contains` is dashed because it declares scope, not causality. Clicking a node shows its attrs, incoming/outgoing edges, event IDs and source refs. The page has no CDN dependency, uses a restrictive CSP and never executes an Action.
 
 ## 4. Relation policy
 
@@ -130,86 +55,7 @@ It reports semantic gaps such as a plan without goal context or a tool call
 without an explicit output. It cannot reconstruct hidden reasoning or raw tool
 payloads that were intentionally not modeled.
 
-## 5. Two renderers, one model
-
-### PlantUML
-
-`trace.puml` is the static contract review:
-
-- top-down DAG;
-- branch and merge using only forward layout edges;
-- phase color, type, status and relation labels;
-- deterministic text artifact suitable for diffs.
-
-It does not implement filters, evidence back-links, details, live refresh or
-artifact preview.
-
-### HTML
-
-`graph.html` is the default key-path graph. `story_graph.build_story_model()`
-consumes the reader scopes without changing canonical nodes or verdicts.
-Without annotations, it displays every stage and its recorded conclusions.
-An explicit `project --presentation` JSON can assign main/branch cards and up to
-three concise outcome annotations per card. It must match the exact source
-ledger SHA256, cover all stages exactly once, reference existing source nodes,
-and attach branches only to main cards. Outcome references must be in the
-card's scope. Validation checks structure and staleness, not semantic truth.
-Tones such as `gain`, `negative`, or `paused` are editorial, not verification.
-
-The graph uses measured HTML card geometry with SVG layout connectors; no
-fixed-width text truncation or fit-to-screen font shrinking is needed. Dashed
-connectors mean review order or topic grouping, never causality. Selecting a
-card expands only its scope below the row and preserves its screen position.
-The local action/output/conclusion arrows require matching original typed
-relations. Shared refuted hypotheses remain counterevidence, not owned claims
-that could import sibling-stage results. Branches reflow below their parent on
-narrow screens. Keyboard activation, Escape, deep links and browser Back work
-without external dependencies. `story-model.json` records the display model.
-
-`reader.html` is the auxiliary, self-contained reading view. `reader.build_reader_model()`
-projects loop members into source-linked question / action / result / conclusion
-spans. Scope evidence uses one explicit relation hop, ignoring containment.
-For Plan-based spans, results must be produced by that Plan's invoked actions;
-an informing output from an earlier span remains context, not a new result.
-No label sentiment parsing, new verification verdicts, or inferred causal edges
-are introduced. Unknown questions/coverage remain unknown. Capture modes and
-recorded missing-content counts are prominent. Raw fields are collapsed.
-
-The reader has its own `review-model.json` contract. Its HTML/CSS/JavaScript live
-under packaged `web/` resources, are inlined into the generated page, and use no
-external runtime dependencies. Source text is escaped in the JSON script block
-and rendered with `textContent`. Only explicit http/https/codex/file source
-references become links; other schemes remain inert, and nothing is auto-loaded.
-
-`workbench.html` uses a separate `evidence-workbench-0.1` model:
-
-- left: collapsible stage navigation;
-- center: Stages / Stage relations / Evidence / Sequence / Source records;
-- right: on-demand node, canonical-edge, aggregate-witness or research details;
-- selection can filter to one explicit relation hop, not just dim the full graph;
-- locale bundles alter display labels only.
-
-Each canonical node belongs to exactly one display group. Shared ownership and
-unscoped nodes have explicit separate groups. Internal edge IDs plus cross-group
-`source_edge_ids` cover every original edge exactly once. Source endpoints,
-types, provenance and statuses are unchanged. Stage-local context follows the
-reader scope, keeping shared refuted claims from importing sibling results.
-
-Local graphs use measured HTML cards and a simplified stable layered layout;
-the obstacle-aware orthogonal router does not reverse or delete source edges.
-All-stage role columns and stage order are display-only. Sequence relations
-remain separately styled as order; evidence, containment and other recorded
-relations retain their types. Overview filters hide detail without deleting it.
-Zoom scales a scrollable world rather than resetting the scroll position;
-source events are paginated rather than duplicated next to the whole graph.
-
-This is not a reproduction of dot, nor a validated usability experiment.
-See [research basis and validation boundaries](workbench-research-basis.md).
-The original technical renderer remains available as `workbench-legacy.html`.
-
-The HTML contains no CDN dependency and never executes an Action.
-
-## 6. Runtime remains separate
+## 5. Runtime remains separate
 
 Only explicit `runtime_managed=true` Step, Action, ToolCall and Verification nodes inside a Run (including nested `contains` scopes) enter the control plane. `next-actions` uses `precedes / blocked_by / approved_by`; `step-status` appends a checkpoint after validating the transition. Approval scope matching is exact-token based (`*`, a list, or comma/semicolon-delimited scopes), not substring matching.
 
@@ -268,19 +114,12 @@ also require a receipt with an accepted completion status. Existing ledgers
 remain readable, but unspecified receipt/evidence statuses no longer qualify
 automatically; add an explicit evidence-backed status event when appropriate.
 
-## 7. Historical reconstruction
+## 6. Historical reconstruction
 
-The importer is read-only. Historical events are marked `reconstructed`; the page repeats that boundary when the selected node originates from reconstructed records. Visual replay is always `visual_only=true` and `reexecutes_actions=false`.
+The importer is read-only. Historical events are marked `reconstructed`; the page repeats that boundary when the selected node originates from reconstructed records.
 
 Cross-case reuse is also derived. A current candidate may match history only through an explicit `reuse_key` / `reuse_keys` attribute, never label similarity. A historical path is called `verified_success_path` only when its Case has an explicit closed/completed state and that same historical Run has a non-derived `VerificationReceipt`; a receipt in another Run cannot qualify it. Reconstructed or synthetic matches remain `advisory_only_non_live_history` and never prove a current live Run.
 
-## 8. Deliberately removed from the reset
+## 7. Deliberately removed
 
-- orthogonal planes and 3D projection;
-- five parallel workspace modes;
-- duplicated node cards across Overview/Plan/Run/Review/Evidence;
-- animated execution lines without explicit telemetry;
-- Mermaid output;
-- renderer-owned spatial catalog.
-
-Future analytical views such as embeddings or cross-run process mining must be optional consumers of the canonical graph. They cannot change the core DAG or become new facts.
+Earlier iterations grew PlantUML/sequence outputs, loop/trace/reader/story/workbench models, a spatial catalog, a replay catalog, locale bundles and authored presentation overlays. They duplicated the canonical graph without adding facts and were removed. New analytical views must stay optional consumers of `graph.json`; they cannot become new facts.

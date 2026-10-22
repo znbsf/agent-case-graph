@@ -19,9 +19,8 @@ class ProjectMainCompatibilityTests(unittest.TestCase):
         self.assertEqual(times, sorted(times))
         self.assertLessEqual(times[-1], datetime.now().astimezone())
 
-    def test_main_spatial_projection_and_receipt_provenance_coexist(self):
+    def test_runtime_advice_and_receipt_provenance_coexist(self):
         graph = project_events(ledger_events(mutation_graph()))
-        self.assertIn("spatial", graph)
         self.assertIn("runtime_advice", graph)
         self.assertEqual(next(node for node in graph["nodes"] if node["id"] == "run")["provenance"]["capture_modes"], ["synthetic"])
         self.assertEqual([], lint_graph(graph))

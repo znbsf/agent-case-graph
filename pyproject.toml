@@ -20,7 +20,6 @@ acg = "agent_case_graph.cli:main"
 
 [project.optional-dependencies]
 mcp = ["mcp>=2.2.0,<3"]
-browser-test = ["playwright==1.62.0"]
 
 [project.urls]
 Homepage = "https://github.com/znbsf/agent-case-graph"
@@ -35,4 +34,4 @@ build-backend = "setuptools.build_meta"
 include = ["agent_case_graph*"]
 
 [tool.setuptools.package-data]
-agent_case_graph = ["schemas/*.json", "web/*.html", "web/*.css", "web/*.js"]
+agent_case_graph = ["schemas/*.json"]
