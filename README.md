@@ -44,6 +44,81 @@ acg project examples/quickstart/events.jsonl --out-dir examples/quickstart/gener
 `graph.json`、`graph.html`、`lint.json`、`projection-receipt.json`（含各文件 SHA256）。
 HTML 单文件、无 CDN、有 CSP，可离线打开。PowerShell 用户可以直接运行仓库根目录的 `acg.ps1`。
 
+## 使用例子
+
+### 1. 完整走一遍：记录一次 bug 修复
+
+[`examples/bugfix/record.sh`](examples/bugfix/record.sh) 只用 `acg` 命令，从零记录一次"测试只在 Windows CI 失败"的排查，
+演示目标 → 观察 → 假设 → 计划 → 门禁执行 → 用证据确认结论的全过程（数据标记为 `synthetic`）：
+
+```bash
+bash examples/bugfix/record.sh
+```
+
+脚本里能看到的几个关键行为：
+
+```text
+== before work ==
+READY   act:patch: Parse month names from a fixed English table (context 3/7, node reduction 57.1%)
+BLOCKED ver:pytest: predecessor_incomplete          # precedes 边：补丁没完成前不能验证
+== after patch ==
+READY   ver:pytest: Run pytest on ubuntu and windows
+== confirm without evidence ==
+ACG error: Claim gate blocked confirmation for claim:locale: insufficient_support_count
+== claim confirmed ==                               # 加上 ver:pytest -supports-> claim 之后才放行
+Lint: 0 errors, 0 warnings
+```
+
+最后打开 `examples/bugfix/generated/graph.html` 查看整张图。
+
+### 2. 单条记录命令
+
+每条命令向 Ledger 追加一条事件，不会改写已有记录：
+
+```bash
+L=my-case/events.jsonl
+acg init-case --ledger $L --case-id CASE-1 --title "Investigate slow login" --capture-mode live
+
+# 节点：id、类型、标签，可选 JSON 属性
+acg record-node --ledger $L --case-id CASE-1 --run-id run:CASE-1:001 \
+  --node-id obs:p95 --node-type Observation --label "p95 login latency 4.2s" --attrs '{"status":"confirmed"}'
+
+# 关系：只有显式 edge 才表示依赖或因果
+acg record-edge --ledger $L --case-id CASE-1 --run-id run:CASE-1:001 \
+  --edge-id e:obs --edge-type contains --from-id run:CASE-1:001 --to-id obs:p95
+
+# Case 状态机：intake → observe → analyze → plan → execute → verify → close
+acg record-state --ledger $L --case-id CASE-1 \
+  --subject-id case:CASE-1 --from-state intake --to-state observe --reason "Report received"
+```
+
+常用节点类型：`Goal`、`Observation`、`Claim`、`Plan`、`Action`、`ToolCall`、`ToolOutput`、`Verification`、`Decision`；
+常用关系：`contains`、`precedes`、`supports`、`refutes`、`explains`、`checks`、`produces`、`invokes`。
+完整列表见 [`model.py`](agent_case_graph/model.py)。
+
+### 3. 查询下一步与结论门禁
+
+```bash
+acg next-actions $L                       # 哪些动作 Ready / Blocked，以及原因
+acg step-status --ledger $L --node-id act:fix --status completed --reason "patched"
+acg claim-status --ledger $L --claim-id claim:cause --status confirmed   # 证据不足会被拒绝
+acg infer-workflow $L                     # 从图反推 Goal → Plan → Tool → Output → Claim，报告缺口
+```
+
+### 4. 在 Python 里使用
+
+```python
+from agent_case_graph.ledger import load_events
+from agent_case_graph.lint import lint_graph
+from agent_case_graph.projector import project_events
+from agent_case_graph.renderer import write_projection
+
+events = load_events("my-case/events.jsonl")
+graph = project_events(events, ledger_path="my-case/events.jsonl")
+findings = lint_graph(graph)
+write_projection("my-case/out", graph=graph, findings=findings, title="Slow login")
+```
+
 ## 底层能力保留
 
 - canonical node/edge 和稳定 ID；

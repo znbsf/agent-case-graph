@@ -49,10 +49,19 @@ def _svg(graph: dict[str, Any], positions: dict[str, tuple[int, int]], colors: d
         if edge["from"] not in positions or edge["to"] not in positions:
             continue
         (x1, y1), (x2, y2) = positions[edge["from"]], positions[edge["to"]]
-        sx, sy, tx, ty = x1 + NODE_W / 2, y1 + NODE_H, x2 + NODE_W / 2, y2
-        bend = max(40, abs(ty - sy) / 2)
+        if y1 == y2:  # same row: side to side, bowing below the row
+            right = x2 > x1
+            sx, tx = (x1 + NODE_W, x2) if right else (x1, x2 + NODE_W)
+            sy = ty = y1 + NODE_H / 2
+            d = f"M{sx},{sy} C{sx},{sy + NODE_H} {tx},{ty + NODE_H} {tx},{ty}"
+        else:  # downward: bottom to top; upward: top to bottom
+            down = y2 > y1
+            sx, tx = x1 + NODE_W / 2, x2 + NODE_W / 2
+            sy, ty = (y1 + NODE_H, y2) if down else (y1, y2 + NODE_H)
+            bend = max(40, abs(ty - sy) / 2) * (1 if down else -1)
+            d = f"M{sx},{sy} C{sx},{sy + bend} {tx},{ty - bend} {tx},{ty}"
         css = "edge structural" if edge["type"] == "contains" else "edge"
-        parts.append(f'<path class="{css}" data-edge="{esc(edge["id"])}" d="M{sx},{sy} C{sx},{sy + bend} {tx},{ty - bend} {tx},{ty}" marker-end="url(#arrow)">'
+        parts.append(f'<path class="{css}" data-edge="{esc(edge["id"])}" d="{d}" marker-end="url(#arrow)">'
                      f'<title>{esc(edge["type"])}: {esc(edge["from"])} → {esc(edge["to"])}</title></path>')
     for node in graph["nodes"]:
         x, y = positions[node["id"]]
