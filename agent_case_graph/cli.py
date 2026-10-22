@@ -20,7 +20,6 @@ from .importer import import_issue_events
 from .inference import infer_workflow
 from .ledger import append_event, atomic_write_text, canonical_json, read_ledger_snapshot, write_new_ledger
 from .lint import lint_graph
-from .localization import load_display_locales
 from .model import ACGError, CAPTURE_MODES, SCHEMA_VERSION, load_events
 from .projector import project_events
 from .planning import check_plan, prepare_plan
@@ -252,17 +251,7 @@ def _cmd_project(args: argparse.Namespace) -> int:
     events, graph, findings = _load_project_lint(args.ledger)
     root = next((node for node in graph["nodes"] if node["id"] == graph["root_id"]), None)
     title = args.title or (root["label"] if root else graph["graph_id"])
-    display_locales = load_display_locales(args.ledger)
-    receipt = write_projection(
-        args.out_dir,
-        graph=graph,
-        events=events,
-        findings=findings,
-        title=title,
-        display_locales=display_locales,
-        default_locale=args.default_locale,
-        presentation=json.loads(args.presentation.read_text(encoding="utf-8")) if args.presentation else None,
-    )
+    receipt = write_projection(args.out_dir, graph=graph, findings=findings, title=title)
     print(json.dumps(receipt, ensure_ascii=False, indent=2))
     has_errors = receipt["lint"]["errors"] > 0
     return 1 if has_errors and not args.allow_errors else 0
@@ -783,12 +772,10 @@ def build_parser() -> argparse.ArgumentParser:
     lint.add_argument("--strict", action="store_true", help="treat warnings as failure")
     lint.set_defaults(func=_cmd_lint)
 
-    project = subparsers.add_parser("project", help="generate JSON, PlantUML, HTML and receipt")
+    project = subparsers.add_parser("project", help="generate graph.json, graph.html, lint.json and receipt")
     project.add_argument("ledger", type=Path)
     project.add_argument("--out-dir", required=True, type=Path)
     project.add_argument("--title")
-    project.add_argument("--default-locale", default="zh-CN")
-    project.add_argument("--presentation", type=Path, help="optional ledger-hash-bound graph presentation JSON (display only)")
     project.add_argument("--allow-errors", action="store_true")
     project.set_defaults(func=_cmd_project)
 
