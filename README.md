@@ -44,6 +44,8 @@ acg project examples/quickstart/events.jsonl --out-dir examples/quickstart/gener
 `graph.json`、`graph.html`、`lint.json`、`projection-receipt.json`（含各文件 SHA256）。
 HTML 单文件、无 CDN、有 CSP，可离线打开。PowerShell 用户可以直接运行仓库根目录的 `acg.ps1`。
 
+有业务节点时，Case / Run 默认折叠，可用页面按钮展开；点击详情中的容器链接也会自动展开。折叠只影响显示，不删除节点、关系或来源。回退线从主流程侧面绕行；关系属性中的 `label`、`condition` 或 `条件` 会直接显示在线旁。
+
 ## 使用例子
 
 ### 1. 完整走一遍：记录一次 bug 修复

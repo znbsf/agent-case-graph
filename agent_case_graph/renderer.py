@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import html
 import json
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -38,31 +39,56 @@ def layout(graph: dict[str, Any]) -> dict[str, tuple[int, int]]:
     return positions
 
 
+def _edge_label(edge: dict[str, Any]) -> str:
+    for key in ("label", "condition", "条件"):
+        value = edge.get("attrs", {}).get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
+def _text_width(text: str) -> int:
+    return sum(12 if unicodedata.east_asian_width(char) in {"W", "F"} else 7 for char in text)
+
+
 def _svg(graph: dict[str, Any], positions: dict[str, tuple[int, int]], colors: dict[str, str]) -> str:
     esc = html.escape
+    feedback = [edge for edge in graph["edges"]
+                if edge["from"] in positions and edge["to"] in positions
+                and positions[edge["to"]][1] <= positions[edge["from"]][1]]
+    lanes = {edge["id"]: PAD + index * 28 for index, edge in enumerate(feedback)}
+    gutter = 0
+    if feedback:
+        gutter = max(110, max(_text_width(_edge_label(edge)) + 32 for edge in feedback)) + 28 * (len(feedback) - 1)
+    positions = {node_id: (x + gutter, y) for node_id, (x, y) in positions.items()}
     width = max((x for x, _ in positions.values()), default=0) + NODE_W + PAD
     height = max((y for _, y in positions.values()), default=0) + NODE_H + PAD
-    parts = [f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">',
-             '<defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
+    parts = ['<defs><marker id="arrow" viewBox="0 0 10 10" refX="10" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">'
              '<path d="M0,0L10,5L0,10z" fill="context-stroke"/></marker></defs>']
     for edge in graph["edges"]:
         if edge["from"] not in positions or edge["to"] not in positions:
             continue
         (x1, y1), (x2, y2) = positions[edge["from"]], positions[edge["to"]]
-        if y1 == y2:  # same row: side to side, bowing below the row
-            right = x2 > x1
-            sx, tx = (x1 + NODE_W, x2) if right else (x1, x2 + NODE_W)
-            sy = ty = y1 + NODE_H / 2
-            d = f"M{sx},{sy} C{sx},{sy + NODE_H} {tx},{ty + NODE_H} {tx},{ty}"
-        else:  # downward: bottom to top; upward: top to bottom
-            down = y2 > y1
-            sx, tx = x1 + NODE_W / 2, x2 + NODE_W / 2
-            sy, ty = (y1 + NODE_H, y2) if down else (y1, y2 + NODE_H)
-            bend = max(40, abs(ty - sy) / 2) * (1 if down else -1)
-            d = f"M{sx},{sy} C{sx},{sy + bend} {tx},{ty - bend} {tx},{ty}"
+        sx, sy, tx, ty = x1 + NODE_W / 2, y1 + NODE_H, x2 + NODE_W / 2, y2
+        bend = max(40, abs(ty - sy) / 2)
         css = "edge structural" if edge["type"] == "contains" else "edge"
-        parts.append(f'<path class="{css}" data-edge="{esc(edge["id"])}" d="{d}" marker-end="url(#arrow)">'
-                     f'<title>{esc(edge["type"])}: {esc(edge["from"])} → {esc(edge["to"])}</title></path>')
+        path = f'M{sx},{sy} C{sx},{sy + bend} {tx},{ty - bend} {tx},{ty}'
+        lx, ly, anchor = (sx + tx) / 2 + 12, (sy + ty) / 2 + 4, "start"
+        if edge["id"] in lanes:
+            lane = lanes[edge["id"]]
+            sy, ty = y1 + NODE_H / 2, y2 + NODE_H / 2
+            path = f'M{x1},{sy} H{lane} V{ty} H{x2}'
+            if y1 == y2:
+                path = f'M{x1},{sy} H{lane} V{y2 - 14} H{x2 + NODE_W / 2} V{y2}'
+            lx, ly, anchor = (lane + x1) / 2, sy - 9, "middle"
+            css += " feedback"
+        label = _edge_label(edge)
+        parts.append(f'<path class="{css}" data-edge="{esc(edge["id"])}" d="{path}" marker-end="url(#arrow)">'
+                     f'<title>{esc(edge["type"])}: {esc(edge["from"])} → {esc(edge["to"])}{": " + esc(label) if label else ""}</title></path>')
+        if label:
+            width = max(width, int(lx + _text_width(label) + PAD))
+            parts.append(f'<text class="edge-label{" feedback" if edge["id"] in lanes else ""}" data-label-for="{esc(edge["id"])}" '
+                         f'x="{lx}" y="{ly}" text-anchor="{anchor}">{esc(label)}</text>')
     for node in graph["nodes"]:
         x, y = positions[node["id"]]
         label = node["label"] if len(node["label"]) <= 28 else node["label"][:27] + "…"
@@ -73,7 +99,7 @@ def _svg(graph: dict[str, Any], positions: dict[str, tuple[int, int]], colors: d
                      f'<text x="10" y="20" class="type">{esc(node["type"])}{" · " + esc(str(state)) if state else ""}</text>'
                      f'<text x="10" y="40">{esc(label)}</text></g>')
     parts.append("</svg>")
-    return "".join(parts)
+    return f'<svg xmlns="http://www.w3.org/2000/svg" width="{width}" height="{height}" viewBox="0 0 {width} {height}">' + "".join(parts)
 
 
 HTML_TEMPLATE = """<!doctype html>
@@ -94,8 +120,10 @@ header h1 { font-size:17px; margin:0 0 4px; }
 .legend span { display:inline-block; margin-right:10px; }
 .legend i { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:-1px; }
 .warn { color:#e45756; }
-main { display:grid; grid-template-columns:1fr 340px; min-height:0; }
+main { display:grid; grid-template-columns:minmax(0,1fr) 340px; min-height:0; }
 #canvas { overflow:auto; }
+.toolbar { display:flex; align-items:center; gap:12px; margin-top:8px; flex-wrap:wrap; }
+button { font:inherit; color:var(--fg); background:var(--panel); border:1px solid var(--line); border-radius:5px; padding:5px 10px; cursor:pointer; }
 aside { border-left:1px solid var(--line); background:var(--panel); padding:12px 16px; overflow:auto; }
 aside h2 { font-size:15px; margin:0 0 8px; word-break:break-word; }
 aside pre { white-space:pre-wrap; word-break:break-word; font-size:12px; margin:0; }
@@ -103,6 +131,10 @@ aside li { margin:2px 0; word-break:break-word; }
 .edge { fill:none; stroke:var(--muted); stroke-width:1.4; }
 .edge.structural { stroke:var(--line); stroke-dasharray:4 4; }
 .edge.hot { stroke:var(--fg); stroke-width:2.2; }
+.edge.feedback { stroke:#b45309; stroke-width:1.8; stroke-linejoin:round; }
+.edge.feedback.hot { stroke-width:2.6; }
+.edge-label { fill:var(--fg); font-size:12px; paint-order:stroke; stroke:var(--bg); stroke-width:5px; stroke-linejoin:round; pointer-events:none; }
+.edge-label.feedback { fill:#b45309; }
 .node { cursor:pointer; }
 .node rect { fill:var(--bg); stroke:var(--c); stroke-width:1.5; }
 .node.selected rect { stroke-width:3.5; }
@@ -116,18 +148,43 @@ aside li { margin:2px 0; word-break:break-word; }
 <h1>__TITLE__</h1>
 <div class="meta">__META__</div>
 <div class="legend">__LEGEND__</div>
+<div class="toolbar">__TOGGLE__<span class="meta" id="view-summary">__VIEW_SUMMARY__</span></div>
 </header>
 <main>
 <div id="canvas">__SVG__</div>
 <aside id="detail"><p class="meta">点击节点查看属性、关系与来源记录。虚线为 contains（作用域，不表示因果）。</p>__LINT__</aside>
 </main>
+<template id="compact-graph">__COMPACT_SVG__</template>
+<template id="expanded-graph">__EXPANDED_SVG__</template>
 <script>
 const GRAPH = __GRAPH_JSON__;
 const nodes = new Map(GRAPH.nodes.map(n => [n.id, n]));
+const containers = new Set(GRAPH.nodes.filter(n => ["Case", "Run"].includes(n.type)).map(n => n.id));
+const toggle = document.getElementById("protocol-toggle");
+const initialDetail = document.getElementById("detail").innerHTML;
+let expanded = !toggle, selectedId = null;
 const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
 const link = id => `<a href="#" data-goto="${esc(id)}">${esc(nodes.get(id)?.label ?? id)}</a>`;
+function setExpanded(value) {
+  expanded = value;
+  document.getElementById("canvas").innerHTML = document.getElementById(value ? "expanded-graph" : "compact-graph").innerHTML;
+  if (toggle) {
+    toggle.setAttribute("aria-expanded", String(value));
+    toggle.textContent = `${value ? "折叠" : "展开"} Case / Run（${containers.size}）`;
+  }
+  document.getElementById("view-summary").textContent = `当前显示 ${document.querySelectorAll("#canvas .node").length} / ${nodes.size} 节点`;
+  if (!value && containers.has(selectedId)) {
+    selectedId = null;
+    document.getElementById("detail").innerHTML = initialDetail;
+  }
+  if (selectedId) select(selectedId);
+}
+if (toggle) toggle.addEventListener("click", () => setExpanded(!expanded));
 function select(id) {
   const n = nodes.get(id);
+  if (!n) return;
+  if (!expanded && containers.has(id)) setExpanded(true);
+  selectedId = id;
   document.querySelectorAll(".node").forEach(g => g.classList.toggle("selected", g.dataset.node === id));
   const related = GRAPH.edges.filter(e => e.from === id || e.to === id);
   const hot = new Set(related.map(e => e.id));
@@ -161,6 +218,14 @@ def render_html(graph: dict[str, Any], *, title: str, findings: list[dict[str, A
     esc = html.escape
     types = sorted({node["type"] for node in graph["nodes"]})
     colors = {kind: PALETTE[index % len(PALETTE)] for index, kind in enumerate(types)}
+    business_nodes = [node for node in graph["nodes"] if node["type"] not in {"Case", "Run"}]
+    business_ids = {node["id"] for node in business_nodes}
+    compact = {"nodes": business_nodes, "edges": [edge for edge in graph["edges"]
+               if edge["from"] in business_ids and edge["to"] in business_ids]}
+    can_collapse = bool(business_nodes) and len(business_nodes) < len(graph["nodes"])
+    expanded_svg = _svg(graph, layout(graph), colors)
+    compact_svg = _svg(compact, layout(compact), colors) if can_collapse else expanded_svg
+    toggle = (f'<button id="protocol-toggle" type="button" aria-expanded="false" aria-controls="canvas">展开 Case / Run（{len(graph["nodes"]) - len(business_nodes)}）</button>' if can_collapse else "")
     stats = graph["stats"]
     modes = ", ".join(f"{mode} {count}" for mode, count in stats["capture_modes"].items())
     meta = f'{stats["event_count"]} 条记录 · {stats["node_count"]} 节点 · {stats["edge_count"]} 关系 · {esc(modes)}'
@@ -173,7 +238,9 @@ def render_html(graph: dict[str, Any], *, title: str, findings: list[dict[str, A
         lint = f'<h3 class="warn">Lint {len(findings)}</h3><ul>{items}</ul>'
     replacements = {
         "__TITLE__": esc(title), "__META__": meta, "__LEGEND__": legend, "__LINT__": lint,
-        "__SVG__": _svg(graph, layout(graph), colors), "__GRAPH_JSON__": _json_for_html({"nodes": graph["nodes"], "edges": graph["edges"]}),
+        "__SVG__": compact_svg, "__COMPACT_SVG__": compact_svg, "__EXPANDED_SVG__": expanded_svg,
+        "__TOGGLE__": toggle, "__VIEW_SUMMARY__": f'当前显示 {len(business_nodes) if can_collapse else len(graph["nodes"])} / {len(graph["nodes"])} 节点',
+        "__GRAPH_JSON__": _json_for_html({"nodes": graph["nodes"], "edges": graph["edges"]}),
     }
     page = HTML_TEMPLATE
     for key, value in replacements.items():
